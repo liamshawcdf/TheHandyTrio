@@ -1,0 +1,22 @@
+{
+  "name": "thehandytrio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "db": "bash scripts/db.sh",
+    "migrate": "node scripts/migrate.js",
+    "dev": "bash scripts/db.sh && node scripts/migrate.js && node --watch src/server.js",
+    "start": "node scripts/migrate.js && node src/server.js",
+    "create-admin": "node scripts/create-admin.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^9.0.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "express-rate-limit": "^7.5.1",
+    "express-session": "^1.19.0",
+    "helmet": "^7.2.0",
+    "pg": "^8.23.1"
+  }
+}
