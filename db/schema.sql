@@ -95,3 +95,79 @@ CREATE TABLE IF NOT EXISTS job_photos (
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS job_photos_job_idx ON job_photos (job_id);
+
+-- Stage 3: price list, job templates and estimates
+CREATE TABLE IF NOT EXISTS suppliers (
+  id         serial PRIMARY KEY,
+  name       text NOT NULL UNIQUE,
+  phone      text,
+  email      text,
+  active     boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS price_items (
+  id           serial PRIMARY KEY,
+  supplier_id  int REFERENCES suppliers(id) ON DELETE SET NULL,
+  code         text,
+  name         text NOT NULL,
+  unit         text NOT NULL DEFAULT 'each',
+  price        numeric NOT NULL CHECK (price >= 0),
+  cut_material boolean NOT NULL DEFAULT false,
+  active       boolean NOT NULL DEFAULT true,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS price_items_supplier_idx ON price_items (supplier_id);
+
+CREATE TABLE IF NOT EXISTS job_templates (
+  id                 serial PRIMARY KEY,
+  name               text NOT NULL,
+  work_type          text,
+  description        text,
+  pricing_method     text NOT NULL DEFAULT 'hourly' CHECK (pricing_method IN ('hourly','day','fixed')),
+  labour_setup       numeric NOT NULL DEFAULT 0,
+  labour_per_unit    numeric NOT NULL DEFAULT 0,
+  crew               int,
+  quantity_question  text,
+  quantity_unit      text,
+  max_quantity       numeric NOT NULL DEFAULT 50,
+  range_low_pct      numeric,
+  range_high_pct     numeric,
+  materials_included boolean NOT NULL DEFAULT false,
+  active             boolean NOT NULL DEFAULT true,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS template_materials (
+  id            serial PRIMARY KEY,
+  template_id   int NOT NULL REFERENCES job_templates(id) ON DELETE CASCADE,
+  price_item_id int NOT NULL REFERENCES price_items(id),
+  qty_per_unit  numeric NOT NULL DEFAULT 1 CHECK (qty_per_unit >= 0)
+);
+CREATE INDEX IF NOT EXISTS template_materials_template_idx ON template_materials (template_id);
+
+CREATE TABLE IF NOT EXISTS access_options (
+  id         serial PRIMARY KEY,
+  label      text NOT NULL,
+  multiplier numeric NOT NULL DEFAULT 1 CHECK (multiplier > 0),
+  active     boolean NOT NULL DEFAULT true
+);
+INSERT INTO access_options (label, multiplier)
+SELECT * FROM (VALUES
+  ('Stairs up to the work area', 1.1),
+  ('No parking close by', 1.1),
+  ('Tight or awkward space', 1.2),
+  ('Work at height (ladders or above)', 1.2)
+) AS v(label, multiplier)
+WHERE NOT EXISTS (SELECT 1 FROM access_options);
+
+CREATE TABLE IF NOT EXISTS postcode_locations (
+  postcode   text PRIMARY KEY,
+  lat        double precision NOT NULL,
+  lng        double precision NOT NULL,
+  fetched_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS template_id int REFERENCES job_templates(id);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS quantity numeric;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS access_option_ids int[] NOT NULL DEFAULT '{}';

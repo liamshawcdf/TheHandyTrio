@@ -8,6 +8,7 @@ const { page, esc } = require('../layout');
 const { wrap, requireLogin, requireRole } = require('../auth');
 const { STATUSES, label } = require('../statuses');
 const { ref, day, when, WORK_TYPES } = require('../format');
+const { calculateEstimate, customerSummary, renderBreakdown } = require('../estimate');
 
 const router = express.Router();
 
@@ -86,17 +87,38 @@ async function setStatus(client, jobId, from, to, userId, note) {
 
 // ---------- New job request (customers) ----------
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const asArray = (v) => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
 
-function requestForm(v, s) {
-  const opt = (t) => `<option ${v.work_type === t ? 'selected' : ''}>${esc(t)}</option>`;
+async function activeTemplate(id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return (await query('SELECT * FROM job_templates WHERE id = $1 AND active', [n])).rows[0] || null;
+}
+
+function chooser(templates) {
+  const groups = {};
+  for (const t of templates) (groups[t.work_type || 'Other jobs'] ||= []).push(t);
+  return `<p class="lead">Pick the job that fits best. You’ll get a price guide straight away.</p>
+  ${Object.entries(groups).map(([g, ts]) => `<h2>${esc(g)}</h2>
+    <div class="choices">${ts.map((t) => `<a class="choice" href="/jobs/new?t=${t.id}"><strong>${esc(t.name)}</strong>${t.description ? `<span>${esc(t.description)}</span>` : ''}</a>`).join('')}</div>`).join('')}
+  <h2>Not listed?</h2>
+  <div class="choices"><a class="choice" href="/jobs/new?t=other"><strong>Something else</strong><span>Describe the job and we’ll arrange a visit to price it.</span></a></div>`;
+}
+
+function requestForm(v, s, t, accessOptions) {
+  const opt = (w) => `<option ${v.work_type === w ? 'selected' : ''}>${esc(w)}</option>`;
+  const chosen = asArray(v.access).map(String);
   return `<form method="post" action="/jobs" enctype="multipart/form-data" class="request">
+  <input type="hidden" name="template_id" value="${t ? t.id : 'other'}">
   <fieldset class="panel">
     <legend>The job</legend>
-    <label>What do you need doing?<input name="title" value="${esc(v.title)}" maxlength="120" required placeholder="For example: hang two internal doors"></label>
-    <label>Type of work<select name="work_type" required><option value="">Choose one</option>${WORK_TYPES.map(opt).join('')}</select></label>
+    ${t ? `<p class="picked"><strong>${esc(t.name)}</strong> <a href="/jobs/new">Change</a></p>` : ''}
+    <label>${t ? 'Job title (change it if you like)' : 'What do you need doing?'}<input name="title" value="${esc(v.title)}" maxlength="120" required placeholder="For example: replace a rotten fence post"></label>
+    ${t ? '' : `<label>Type of work<select name="work_type" required>${WORK_TYPES.map(opt).join('')}</select></label>`}
+    ${t && t.quantity_question ? `<label>${esc(t.quantity_question)}<input name="quantity" type="number" min="0.5" step="0.5" max="${esc(t.max_quantity)}" value="${esc(v.quantity || '')}" required></label>` : ''}
     <label>Describe the job<textarea name="description" rows="5" maxlength="4000" placeholder="Sizes, materials, what’s wrong, anything you’ve already bought">${esc(v.description)}</textarea></label>
     <label>Photos (up to ${MAX_PHOTOS})<input type="file" name="photos" accept="image/*" multiple></label>
-    <p class="hint">Photos of the area and any damage help us give a closer estimate.</p>
+    <p class="hint">Photos of the area and any damage help us price it accurately.</p>
   </fieldset>
   <fieldset class="panel">
     <legend>Where</legend>
@@ -105,7 +127,9 @@ function requestForm(v, s) {
       <label>Town<input name="town" value="${esc(v.town)}" autocomplete="address-level2"></label>
       <label>Postcode<input name="postcode" value="${esc(v.postcode)}" required autocomplete="postal-code"></label>
     </div>
-    <label>Access information<textarea name="access_info" rows="3" maxlength="2000" placeholder="Parking, key safe or who lets us in, stairs, pets">${esc(v.access_info)}</textarea></label>
+    ${t && accessOptions.length ? `<p class="fieldlabel">Anything that makes access harder?</p>
+      ${accessOptions.map((a) => `<label class="check"><input type="checkbox" name="access" value="${a.id}" ${chosen.includes(String(a.id)) ? 'checked' : ''}> ${esc(a.label)}</label>`).join('')}` : ''}
+    <label>Access information<textarea name="access_info" rows="3" maxlength="2000" placeholder="Parking, key safe or who lets us in, pets">${esc(v.access_info)}</textarea></label>
   </fieldset>
   <fieldset class="panel">
     <legend>When</legend>
@@ -113,44 +137,72 @@ function requestForm(v, s) {
       <label>Earliest start<input type="date" name="preferred_start" value="${esc(v.preferred_start)}" min="${todayISO()}" required></label>
       <label>Finished by (optional)<input type="date" name="preferred_end" value="${esc(v.preferred_end)}" min="${todayISO()}"></label>
     </div>
-    <p class="hint">Jobs needed within ${esc(s.urgent_within_hours)} hours are treated as urgent and may cost more.</p>
+    <p class="hint">Jobs needed within ${esc(s.urgent_within_hours)} hours are treated as urgent and cost more.</p>
   </fieldset>
-  <button class="primary">Send job request</button>
+  <button class="primary">${t ? 'Send and see my price guide' : 'Send job request'}</button>
 </form>`;
 }
 
 router.get('/jobs/new', requireRole('customer'), wrap(async (req, res) => {
+  const pick = req.query.t;
+  if (!pick) {
+    const templates = (await query('SELECT id, name, description, work_type FROM job_templates WHERE active ORDER BY work_type, name')).rows;
+    if (!templates.length) return res.redirect('/jobs/new?t=other');
+    return res.send(page({ title: 'Request a job', user: req.user, body: chooser(templates) }));
+  }
+  const t = pick === 'other' ? null : await activeTemplate(pick);
+  if (pick !== 'other' && !t) return res.redirect('/jobs/new');
   const me = (await query('SELECT address_line, town, postcode FROM users WHERE id = $1', [req.user.id])).rows[0];
   const s = (await query('SELECT urgent_within_hours FROM settings WHERE id = 1')).rows[0];
-  res.send(page({ title: 'Request a job', user: req.user, body: requestForm(me, s) }));
+  const access = t ? (await query('SELECT id, label FROM access_options WHERE active ORDER BY id')).rows : [];
+  const v = { ...me, title: t ? t.name : '', work_type: 'Something else' };
+  res.send(page({ title: 'Request a job', user: req.user, body: requestForm(v, s, t, access) }));
 }));
 
 router.post('/jobs', requireRole('customer'), photoUpload, wrap(async (req, res) => {
   const v = {};
-  for (const k of ['title', 'work_type', 'description', 'address_line', 'town', 'postcode', 'access_info', 'preferred_start', 'preferred_end']) {
+  for (const k of ['title', 'work_type', 'description', 'address_line', 'town', 'postcode', 'access_info', 'preferred_start', 'preferred_end', 'quantity']) {
     v[k] = String(req.body[k] || '').trim();
   }
   v.postcode = v.postcode.toUpperCase();
+  v.access = asArray(req.body.access);
   const s = (await query('SELECT urgent_within_hours FROM settings WHERE id = 1')).rows[0];
   const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
 
+  const isOther = req.body.template_id === 'other';
+  const t = isOther ? null : await activeTemplate(req.body.template_id);
+  if (!isOther && !t) { removeFiles(req.files); return res.redirect('/jobs/new'); }
+  if (t) v.work_type = t.work_type || 'Something else';
+  const accessOptions = t ? (await query('SELECT id, label FROM access_options WHERE active ORDER BY id')).rows : [];
+  const accessIds = v.access.map(Number).filter((id) => accessOptions.some((a) => a.id === id));
+  const qty = t && t.quantity_question ? Number(v.quantity) : 1;
+
   let error = req.uploadError || null;
   if (!error) {
-    if (!v.title) error = 'Say what you need doing.';
+    if (!v.title) error = 'Give the job a title.';
     else if (!WORK_TYPES.includes(v.work_type)) error = 'Choose the type of work.';
+    else if (t && t.quantity_question && (!(qty > 0) || qty > Number(t.max_quantity))) error = `Answer “${t.quantity_question}” with a number from 0.5 to ${Number(t.max_quantity)}. For bigger jobs, choose Something else.`;
     else if (!v.address_line || !v.postcode) error = 'Enter the address and postcode for the job.';
     else if (!isDate(v.preferred_start) || v.preferred_start < todayISO()) error = 'Choose an earliest start date from today onwards.';
     else if (v.preferred_end && (!isDate(v.preferred_end) || v.preferred_end < v.preferred_start)) error = 'The finish date must be on or after the start date.';
   }
   if (error) {
     removeFiles(req.files);
-    return res.status(400).send(page({ title: 'Request a job', user: req.user, error, body: requestForm(v, s) }));
+    return res.status(400).send(page({ title: 'Request a job', user: req.user, error, body: requestForm(v, s, t, accessOptions) }));
   }
 
   const hoursAhead = (Date.parse(v.preferred_start) - Date.parse(todayISO())) / 3600000;
   const urgent = hoursAhead < Number(s.urgent_within_hours);
-  // Non-standard work skips the calculator and goes straight to inspection.
-  const status = v.work_type === 'Something else' ? 'inspection_required' : 'request';
+
+  let estimate = null;
+  if (t) {
+    try {
+      estimate = await calculateEstimate({ templateId: t.id, quantity: qty, accessIds, postcode: v.postcode, urgent });
+    } catch (e) {
+      console.error('Estimate failed:', e);
+    }
+  }
+  const status = isOther ? 'inspection_required' : 'request';
 
   const client = await pool.connect();
   let jobId;
@@ -158,16 +210,22 @@ router.post('/jobs', requireRole('customer'), photoUpload, wrap(async (req, res)
     await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO jobs (customer_id, title, work_type, description, address_line, town, postcode, access_info,
-         preferred_start, preferred_end, urgent, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+         preferred_start, preferred_end, urgent, status, template_id, quantity, access_option_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
       [req.user.id, v.title, v.work_type, v.description || null, v.address_line, v.town || null, v.postcode,
-        v.access_info || null, v.preferred_start, v.preferred_end || null, urgent, status]
+        v.access_info || null, v.preferred_start, v.preferred_end || null, urgent, status,
+        t ? t.id : null, t ? qty : null, accessIds]
     );
     jobId = rows[0].id;
     await client.query(
       'INSERT INTO job_status_history (job_id, from_status, to_status, changed_by, note) VALUES ($1, NULL, $2, $3, $4)',
       [jobId, status, req.user.id, 'Request sent by customer']
     );
+    if (estimate) {
+      await client.query('UPDATE jobs SET estimate_low = $1, estimate_high = $2, estimate_snapshot = $3 WHERE id = $4',
+        [estimate.low, estimate.high, JSON.stringify(estimate), jobId]);
+      await setStatus(client, jobId, status, 'estimated', null, 'Price guide worked out automatically');
+    }
     await savePhotos(client, jobId, req.files, req.user.id);
     await client.query('COMMIT');
   } catch (e) {
@@ -230,6 +288,24 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
     </div>`;
   }
 
+  const e = job.estimate_snapshot;
+  let estimatePanel = '';
+  if (e) {
+    estimatePanel = `<section class="panel callout estimate">
+      <h2>Price guide</h2>
+      <p class="bigprice">${esc(customerSummary(e))}</p>
+      <p>${user.role === 'customer'
+        ? 'This is a guide based on what you’ve told us. We’ll confirm the exact price after we’ve seen the job.'
+        : `${esc(e.template.name)}${e.quantity_unit ? `, ${e.quantity} ${esc(e.quantity_unit)}` : ''}. Worked out ${when(e.generated_at)}.`}</p>
+      ${user.role !== 'customer' ? `<details ${user.role === 'admin' ? 'open' : ''}><summary>How this was worked out</summary>${renderBreakdown(e)}</details>` : ''}
+      ${user.role === 'admin' && job.template_id ? `<form method="post" action="/jobs/${job.id}/estimate" class="inline"><button class="small">Recalculate with today’s prices</button></form>` : ''}
+    </section>`;
+  } else if (job.status === 'inspection_required') {
+    estimatePanel = `<section class="panel callout"><h2>Price</h2><p>${user.role === 'customer'
+      ? 'This job needs a visit before we can price it. We’ll be in touch to arrange an inspection.'
+      : 'Not a standard job, so no automatic estimate. Book an inspection to price it.'}</p></section>`;
+  }
+
   const notice = req.query.sent ? 'Job request sent. We’ll review it and be in touch.'
     : req.query.updated ? 'Job updated.' : req.query.photos ? 'Photos added.' : null;
   const error = req.query.photoerror ? String(req.query.photoerror).slice(0, 120) : null;
@@ -237,6 +313,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   const body = `
   <p class="jobhead"><span class="ref">${ref(job.id)}</span> <span class="tag">${esc(label(job.status))}</span>
     ${job.urgent ? '<span class="tag urgent">Urgent</span>' : ''}</p>
+  ${estimatePanel}
   <div class="jobgrid">
     <section class="panel">
       <h2>The job</h2>
@@ -315,6 +392,32 @@ router.post('/jobs/:id/cancel', requireRole('customer'), wrap(async (req, res) =
     } finally {
       client.release();
     }
+  }
+  res.redirect(`/jobs/${job.id}?updated=1`);
+}));
+
+// ---------- Admin: recalculate estimate ----------
+router.post('/jobs/:id/estimate', requireRole('admin'), wrap(async (req, res) => {
+  const job = await loadJob(req);
+  if (!job) return notFound(req, res);
+  if (!job.template_id) return res.redirect(`/jobs/${job.id}`);
+  const est = await calculateEstimate({
+    templateId: job.template_id, quantity: job.quantity, accessIds: job.access_option_ids || [],
+    postcode: job.postcode, urgent: job.urgent,
+  });
+  if (!est) return res.redirect(`/jobs/${job.id}`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE jobs SET estimate_low = $1, estimate_high = $2, estimate_snapshot = $3, updated_at = now() WHERE id = $4',
+      [est.low, est.high, JSON.stringify(est), job.id]);
+    if (job.status === 'request') await setStatus(client, job.id, 'request', 'estimated', req.user.id, 'Price guide worked out');
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));

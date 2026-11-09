@@ -120,3 +120,40 @@ dd { margin: 0; overflow-wrap: anywhere; }
   dl { grid-template-columns: 1fr; gap: .1rem; }
   dd { margin-bottom: .5rem; }
 }
+
+/* Stage 3: pricing and estimates */
+.lead { max-width: 65ch; }
+.subnav { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 1.25rem; border-bottom: 2px solid var(--line); }
+.subnav a { text-decoration: none; padding: .45rem .8rem; border-bottom: 3px solid transparent; margin-bottom: -2px; color: var(--muted); }
+.subnav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--hivis); font-weight: 600; }
+.twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; align-items: start; }
+.twocol h2:first-child { margin-top: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin: 0 0 1rem; }
+.filters label { margin: 0; }
+.filters input, .filters select { width: auto; min-width: 160px; }
+td.num, th.num { text-align: right; }
+.addmat { display: grid; grid-template-columns: 1fr 120px auto; gap: .75rem; align-items: end; margin-top: .75rem; }
+.addmat label { margin: 0; }
+.accessrow { display: grid; grid-template-columns: 1fr 120px auto auto; gap: .75rem; align-items: end; margin-bottom: .5rem; }
+.accessrow label { margin: 0; }
+.accessrow.off { opacity: .6; }
+
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .75rem; }
+.choice { display: flex; flex-direction: column; gap: .25rem; text-decoration: none; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--slate); border-radius: 6px; padding: .9rem 1rem; }
+.choice:hover { border-left-color: var(--hivis); }
+.choice span { color: var(--muted); font-size: .92rem; }
+.picked { display: flex; gap: .75rem; align-items: baseline; margin: 0 0 .75rem; }
+.fieldlabel { font-weight: 500; margin: 0 0 .4rem; }
+
+.estimate .bigprice { font: 700 2rem/1.1 "Barlow Condensed", Barlow, sans-serif; margin: .25rem 0 .5rem; }
+.estimate details { margin: .75rem 0; }
+.estimate summary { cursor: pointer; font-weight: 600; }
+.breakdown td { white-space: normal; }
+.breakdown tr.group th { background: var(--bg); color: var(--ink); }
+.breakdown tr.sum td { font-weight: 600; }
+.breakdown tr.grand td { font-weight: 700; font-size: 1.1rem; border-top: 2px solid var(--ink); }
+.warnings { background: var(--bad-bg); color: var(--bad-ink); border-radius: 4px; padding: .6rem 1rem .6rem 2rem; margin: .75rem 0 0; }
+
+@media (max-width: 560px) {
+  .addmat, .accessrow { grid-template-columns: 1fr; }
+}
