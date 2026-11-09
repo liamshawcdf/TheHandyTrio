@@ -457,3 +457,22 @@ INSERT INTO email_templates (status, subject, body) VALUES
  ('cert_due', 'Your {cert_name} is due soon', E'Hi {first_name},\n\nYour {cert_name} for {address} is due on {due_date}. Keeping it up to date keeps you safe{landlord_note}.\n\nBook your visit here, it only takes a minute:\n{book_link}\n\nThanks,\n{business_name}'),
  ('review_request', 'How did we do?', E'Hi {first_name},\n\nThanks again for choosing {business_name} for "{job_title}". If you were happy with the work, a quick review would really help a small local business like ours:\n\n{review_link}\n\nThank you,\n{business_name}')
 ON CONFLICT (status) DO NOTHING;
+
+-- Staff availability: builders are available any time unless they say otherwise
+CREATE TABLE IF NOT EXISTS staff_availability (
+  user_id    int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date       date NOT NULL,
+  kind       text NOT NULL CHECK (kind IN ('hours','off')),
+  start_time text,
+  end_time   text,
+  PRIMARY KEY (user_id, date)
+);
+CREATE TABLE IF NOT EXISTS staff_time_off (
+  id         serial PRIMARY KEY,
+  user_id    int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date date NOT NULL,
+  end_date   date NOT NULL,
+  note       text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS staff_time_off_user_idx ON staff_time_off (user_id, start_date);

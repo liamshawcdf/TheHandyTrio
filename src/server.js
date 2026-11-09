@@ -60,6 +60,7 @@ app.use(require('./routes/backups'));
 app.use(require('./routes/calendar').router);
 app.use(require('./routes/repeat'));
 app.use(require('./routes/reports'));
+app.use(require('./routes/availability'));
 app.use(require('./routes/emails'));
 
 app.use((req, res) => {

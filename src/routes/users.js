@@ -25,7 +25,7 @@ function personFields(v = {}, { isSelf = false, isNew = false } = {}) {
       <label>Postcode<input name="postcode" value="${esc(v.postcode)}"></label>
     </div>
     <p class="hint">For builders this is their home postcode. Travel costs are worked out from it.</p>
-    ${v.role === 'customer' ? '' : `<label>Pay rate per hour (only used for profit reports)<input name="cost_rate" type="number" step="0.01" min="0" value="${esc(v.cost_rate ?? '')}"></label>`}
+    ${v.role === 'customer' ? '' : `<label>Pay rate per hour (£, used for profit reports)<input name="cost_rate" type="number" step="0.01" min="0" value="${esc(v.cost_rate ?? '')}"></label>`}
     <label>${isNew ? 'Starting password (8 characters or more)' : 'New password (leave blank to keep the current one)'}
       <input type="password" name="password" ${isNew ? 'required' : ''} minlength="8" autocomplete="new-password"></label>`;
 }
@@ -57,7 +57,7 @@ async function checkPerson(v, { isNew }) {
 
 async function renderList(req, res, { notice, error, v = {} } = {}) {
   const { rows } = await query(
-    `SELECT u.id, u.role, u.name, u.email, u.phone, u.postcode, u.active,
+    `SELECT u.id, u.role, u.name, u.email, u.phone, u.postcode, u.active, u.cost_rate,
        (SELECT json_agg(json_build_object('kind', q.kind, 'expires', q.expires) ORDER BY q.expires) FROM staff_qualifications q WHERE q.user_id = u.id) AS quals
      FROM users u ORDER BY u.role, u.name`);
   const today = new Date(new Date().toDateString());
@@ -72,12 +72,13 @@ async function renderList(req, res, { notice, error, v = {} } = {}) {
     <td>${esc(ROLE_LABELS[u.role])}</td>
     <td>${u.role === 'builder' && !u.postcode ? '<span class="tag urgent">Needs postcode</span>' : esc(u.postcode)}</td>
     <td>${qualTags(u.quals)}</td>
+    <td>${u.role === 'customer' ? '' : `<form method="post" action="/admin/users/${u.id}/rate" class="rateform"><span>£</span><input name="cost_rate" type="number" step="0.01" min="0" value="${u.cost_rate === null ? '' : Number(u.cost_rate)}" aria-label="Pay rate per hour for ${esc(u.name)}"><span>/hr</span><button class="small">Save</button></form>`}</td>
     <td>${u.active ? 'Active' : 'Switched off'}</td>
     <td>${u.id === req.user.id ? '<span class="muted">You</span>' : `<form method="post" action="/admin/users/${u.id}/toggle" class="inline"><button class="small">${u.active ? 'Switch off' : 'Switch on'}</button></form>`}</td>
   </tr>`).join('');
   const body = `
     <div class="scroll"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Postcode</th><th>Qualifications</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Postcode</th><th>Qualifications</th><th>Pay rate</th><th>Status</th><th></th></tr></thead>
       <tbody>${list}</tbody></table></div>
     <h2>Add a person</h2>
     <form method="post" action="/admin/users" class="panel narrow">
@@ -150,6 +151,7 @@ router.get('/admin/users/:id', admin, wrap(async (req, res) => {
       ${qualForm({ kind: 'gas' }, `/admin/users/${u.id}/quals`, 'Add qualification')}
     </section>
     </div>
+    ${u.role !== 'customer' ? `<p><a class="button" href="/availability?user=${u.id}">Working hours and holidays</a></p>` : ''}
     <p><a href="/admin/users">Back to people</a></p>`;
   res.send(page({ title: `Edit ${u.name}`, user: req.user, error: req.query.error ? clean(req.query.error) : null, body }));
 }));
@@ -208,6 +210,13 @@ router.post('/admin/users/:id/quals/:qid/delete', admin, wrap(async (req, res) =
   const id = Number(req.params.id) || 0;
   await query('DELETE FROM staff_qualifications WHERE id = $1 AND user_id = $2', [Number(req.params.qid) || 0, id]);
   res.redirect(`/admin/users/${id}`);
+}));
+
+router.post('/admin/users/:id/rate', admin, wrap(async (req, res) => {
+  const raw = String(req.body.cost_rate ?? '').trim();
+  const rate = raw === '' ? null : Math.max(0, Number(raw) || 0);
+  await query("UPDATE users SET cost_rate = $1 WHERE id = $2 AND role <> 'customer'", [rate, Number(req.params.id) || 0]);
+  res.redirect('/admin/users?saved=1');
 }));
 
 router.post('/admin/users/:id/toggle', admin, wrap(async (req, res) => {

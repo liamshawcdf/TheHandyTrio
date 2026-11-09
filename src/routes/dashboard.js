@@ -108,7 +108,12 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
   const { eventsBetween, eventChip } = require('./calendar');
   const todayISO = ukDate(new Date());
   const todays = await eventsBetween(todayISO, todayISO);
-  const todayBox = `<h2>Today</h2>${todays.length ? `<div class="soon">${todays.map(eventChip).join('')}</div>` : '<p class="empty">Nothing booked today.</p>'}<p><a href="/calendar">Open the calendar</a></p>`;
+  const { loadAvailability, dayStatus, statusLabel } = require('../availability');
+  const staffRows = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+  const avToday = await loadAvailability(staffRows.map((b) => b.id), todayISO, todayISO);
+  const notAny = staffRows.map((b) => ({ b, st: dayStatus(avToday, b.id, todayISO) })).filter((x) => x.st.state !== 'any');
+  const whoOff = notAny.length ? `<p class="muted">${notAny.map((x) => `${esc(x.b.name)}: ${esc(statusLabel(x.st))}`).join(' · ')}</p>` : '';
+  const todayBox = `<h2>Today</h2>${whoOff}${todays.length ? `<div class="soon">${todays.map(eventChip).join('')}</div>` : '<p class="empty">Nothing booked today.</p>'}<p><a href="/calendar">Open the calendar</a></p>`;
   const todo = `<h2>Needs your attention</h2>${todoItems.length ? `<ul class="todo">${todoItems.join('')}</ul>` : '<p class="empty">Nothing waiting on you right now.</p>'}`;
 
   const body = `

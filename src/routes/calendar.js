@@ -9,6 +9,7 @@ const { ref, day, longWhen, timeOnly, ukDate, ukTime, addDays } = require('../fo
 const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange, notifyOffice } = require('../notify');
 const { locate } = require('../estimate');
+const { loadAvailability, dayStatus, freeBetween, statusLabel } = require('../availability');
 
 const router = express.Router();
 const staff = requireRole('admin', 'builder');
@@ -48,6 +49,7 @@ async function openSlots(excludeJobId = 0) {
   const work = (await query(
     `SELECT assigned_builder_id, scheduled_start, coalesce(scheduled_end, scheduled_start) AS scheduled_end FROM jobs
      WHERE status = ANY($1) AND scheduled_start IS NOT NULL AND assigned_builder_id IS NOT NULL`, [ACTIVE_WORK])).rows;
+  const av = await loadAvailability(builders.map((b) => b.id), today, lastDay);
   const busyOnDay = (bid, iso) => work.some((w) => w.assigned_builder_id === bid && ukDate(w.scheduled_start) <= iso && iso <= ukDate(w.scheduled_end));
 
   const days = [];
@@ -58,7 +60,7 @@ async function openSlots(excludeJobId = 0) {
     for (let t = ukTime(iso, r.start).getTime(); t + r.slot * 60000 <= endAt; t += r.slot * 60000) {
       if (t < earliest) continue;
       const tEnd = t + r.slot * 60000;
-      const free = builders.filter((b) => !busyOnDay(b.id, iso) && !inspections.some((i) => i.inspection_builder_id === b.id
+      const free = builders.filter((b) => !busyOnDay(b.id, iso) && freeBetween(av, b.id, new Date(t), new Date(tEnd)) && !inspections.some((i) => i.inspection_builder_id === b.id
         && new Date(i.inspection_at).getTime() < tEnd && new Date(i.inspection_at).getTime() + N(i.inspection_minutes) * 60000 > t));
       if (free.length) slots.push({ at: new Date(t), free });
     }
@@ -127,6 +129,7 @@ router.get('/jobs/:id/inspection', requireLogin, wrap(async (req, res) => {
       <label>Date<input type="date" name="date" required></label>
       <label>Time<input type="time" name="time" required step="300"></label>
       <label>Inspector<select name="builder_id">${builders.map((b) => `<option value="${b.id}" ${b.id === job.assigned_builder_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" name="override"> Book anyway, even if they’re off</label>
       <button class="primary">Book</button>
     </form>` : '';
   const body = `<p class="jobhead"><a href="/jobs/${job.id}">Back to the job</a></p>
@@ -148,6 +151,11 @@ router.post('/jobs/:id/inspection', requireLogin, wrap(async (req, res) => {
     at = ukTime(req.body.date, req.body.time);
     builder = (await query("SELECT id, name FROM users WHERE id = $1 AND role = 'builder' AND active", [Number(req.body.builder_id) || 0])).rows[0];
     if (!builder) return res.redirect(`/jobs/${job.id}/inspection?error=${encodeURIComponent('Choose an inspector.')}`);
+    const av = await loadAvailability([builder.id], req.body.date, req.body.date);
+    if (!freeBetween(av, builder.id, at, new Date(at.getTime() + rules.slot * 60000)) && req.body.override !== 'on') {
+      const st = statusLabel(dayStatus(av, builder.id, req.body.date));
+      return res.redirect(`/jobs/${job.id}/inspection?error=${encodeURIComponent(`${builder.name} isn’t available then (${st}). Tick “Book anyway” to go ahead.`)}`);
+    }
   } else {
     const wanted = new Date(String(req.body.at || '')).getTime();
     const slot = days.flatMap((d) => d.slots).find((s) => s.at.getTime() === wanted);
@@ -254,17 +262,23 @@ router.get('/calendar', staff, wrap(async (req, res) => {
     <a class="button" href="/calendar?week=${addDays(start, 7)}">Next week</a>
   </nav>`;
 
+  const avChip = (uid, d, av) => {
+    const st = dayStatus(av, uid, d);
+    return st.state === 'any' ? '' : `<span class="avchip ${st.state}">${esc(statusLabel(st))}</span>`;
+  };
   let grid;
   if (isAdmin) {
     const builders = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+    const av = await loadAvailability(builders.map((b) => b.id), days[0], days[6]);
     grid = `<div class="scroll"><table class="week">
       <thead><tr><th>Builder</th>${days.map((d) => `<th class="${d === today ? 'today' : ''}">${dayHead(d)}</th>`).join('')}</tr></thead>
-      <tbody>${builders.map((b) => `<tr><th>${esc(b.name)}</th>${days.map((d) => `<td class="${d === today ? 'today' : ''}">${on(events.filter((e) => e.builder_id === b.id), d).map(eventChip).join('')}</td>`).join('')}</tr>`).join('')}
+      <tbody>${builders.map((b) => `<tr><th>${esc(b.name)}</th>${days.map((d) => `<td class="${d === today ? 'today' : ''}">${avChip(b.id, d, av)}${on(events.filter((e) => e.builder_id === b.id), d).map(eventChip).join('')}</td>`).join('')}</tr>`).join('')}
       </tbody></table></div>`;
   } else {
+    const av = await loadAvailability([user.id], days[0], days[6]);
     grid = `<div class="agenda">${days.map((d) => {
       const list = on(events, d);
-      return `<section class="aday ${d === today ? 'today' : ''}"><h3>${dayHead(d)}${d === today ? ' <span class="tag">Today</span>' : ''}</h3>
+      return `<section class="aday ${d === today ? 'today' : ''}"><h3>${dayHead(d)}${d === today ? ' <span class="tag">Today</span>' : ''} ${avChip(user.id, d, av)}</h3>
         ${list.length ? list.map(eventChip).join('') : '<p class="muted">Nothing booked</p>'}</section>`;
     }).join('')}</div>`;
   }
@@ -286,7 +300,8 @@ router.get('/calendar', staff, wrap(async (req, res) => {
     <form method="post" action="/calendar/new-link" class="inline"><button class="small">Make a new link</button></form>
   </details>`;
 
-  const body = `${nav}<h2>Week of ${day(start)}</h2>${grid}${feed}`;
+  const body = `${nav}<h2>Week of ${day(start)}</h2>
+    <p><a href="/availability">${isAdmin ? 'Set working hours and holidays for anyone' : 'Set my working hours and holidays'}</a></p>${grid}${feed}`;
   res.send(page({ title: isAdmin ? 'Calendar' : 'My diary', user, body }));
 }));
 
@@ -336,6 +351,14 @@ router.get('/calendar/feed/:token.ics', wrap(async (req, res) => {
         `SUMMARY:${icsEscape(`Job: ${e.title}${u.role === 'admin' && names[e.builder_id] ? ` (${names[e.builder_id]})` : ''}`)}`, 'TRANSP:TRANSPARENT');
     }
     lines.push(`LOCATION:${icsEscape(address)}`, `DESCRIPTION:${icsEscape(desc)}`, `URL:${base}/jobs/${e.id}`, 'END:VEVENT');
+  }
+  const people = u.role === 'admin' ? Object.keys(names).map(Number) : [u.id];
+  const hols = (await query(
+    `SELECT id, user_id, to_char(start_date, 'YYYY-MM-DD') AS s, to_char(end_date, 'YYYY-MM-DD') AS e, note FROM staff_time_off
+     WHERE user_id = ANY($1) AND end_date >= $2::date AND start_date <= $3::date`, [people, addDays(today, -30), addDays(today, 180)])).rows;
+  for (const h of hols) {
+    lines.push('BEGIN:VEVENT', `UID:timeoff-${h.id}@thehandytrio`, `DTSTAMP:${now}`, `DTSTART;VALUE=DATE:${icsDate(h.s)}`, `DTEND;VALUE=DATE:${icsDate(addDays(h.e, 1))}`,
+      `SUMMARY:${icsEscape(`${u.role === 'admin' ? `${names[h.user_id] || 'Staff'}: ` : ''}Time off${h.note ? ` (${h.note})` : ''}`)}`, 'TRANSP:TRANSPARENT', 'END:VEVENT');
   }
   lines.push('END:VCALENDAR');
   res.setHeader('Content-Type', 'text/calendar; charset=utf-8');

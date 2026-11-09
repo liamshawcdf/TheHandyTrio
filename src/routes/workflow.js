@@ -10,6 +10,7 @@ const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange, notifyOffice } = require('../notify');
 const { currentQuote, displayLines, qref } = require('./quotes');
 const { renderDocument } = require('../pdf');
+const { loadAvailability, blockedDates } = require('../availability');
 
 const router = express.Router();
 const admin = requireRole('admin');
@@ -117,6 +118,7 @@ async function nextStepPanel(job, user) {
         <label>Builder<select name="builder_id" required>${builders.map((b) => `<option value="${b.id}" ${b.id === job.assigned_builder_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>
         <label>Start<input type="date" name="start" value="${iso(job.scheduled_start)}" required></label>
         <label>Finish (optional)<input type="date" name="end" value="${iso(job.scheduled_end)}"></label>
+        <label class="check"><input type="checkbox" name="override"> Book anyway, even if they’re off</label>
         <button class="primary">${job.status === 'scheduled' ? 'Save and tell the customer' : 'Book in and tell the customer'}</button>
       </form>`);
   }
@@ -378,8 +380,13 @@ router.post('/jobs/:id/schedule', admin, wrap(async (req, res) => {
   const end = String(req.body.end || '');
   if (!isDate(start)) return errorBack(res, job, 'Choose a start date.');
   if (end && (!isDate(end) || end < start)) return errorBack(res, job, 'The finish date must be on or after the start.');
-  const ok = builderId && (await query("SELECT 1 FROM users WHERE id = $1 AND role = 'builder' AND active", [builderId])).rows.length;
-  if (!ok) return errorBack(res, job, 'Choose a builder.');
+  const b = builderId && (await query("SELECT id, name FROM users WHERE id = $1 AND role = 'builder' AND active", [builderId])).rows[0];
+  if (!b) return errorBack(res, job, 'Choose a builder.');
+  const av = await loadAvailability([b.id], start, end || start);
+  const blocked = blockedDates(av, b.id, start, end || start);
+  if (blocked.length && req.body.override !== 'on') {
+    return errorBack(res, job, `${b.name} is off on ${blocked.map((x) => `${day(x.date)}${x.state === 'holiday' ? ' (holiday)' : ''}`).join(', ')}. Choose other dates or tick “Book anyway”.`);
+  }
   await inTransaction(async (client) => {
     await client.query('UPDATE jobs SET assigned_builder_id = $1, scheduled_start = $2, scheduled_end = $3, updated_at = now() WHERE id = $4',
       [builderId, start, end || null, job.id]);

@@ -293,3 +293,25 @@ button.slot:hover, button.slot:focus-visible { background: var(--hivis); color: 
 td.neg { color: var(--bad-ink); font-weight: 600; }
 tr.sumrow td { font-weight: 700; border-top: 2px solid var(--ink); }
 ul.error { padding-left: 2rem; }
+
+/* Availability */
+.avmonth { display: grid; gap: .25rem; margin-bottom: 1rem; }
+.avrow { display: grid; grid-template-columns: 110px 140px 1fr 1fr; gap: .5rem; align-items: center; padding: .3rem .5rem; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); }
+.avrow select, .avrow input { margin: 0; padding: .35rem .5rem; }
+.avrow.weekend { background: var(--bg); }
+.avrow.off { border-left: 4px solid var(--muted); }
+.avrow.hours { border-left: 4px solid var(--slate); }
+.avrow.holiday { border-left: 4px solid var(--hivis); grid-template-columns: 110px auto 1fr; }
+.avrow.past { opacity: .5; }
+.avday { font-weight: 600; font-size: .9rem; }
+.dows { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .75rem; }
+.dows label { margin: 0; }
+.avchip { display: block; font-size: .75rem; padding: .15rem .4rem; border-radius: 3px; margin-bottom: .3rem; background: var(--bg); color: var(--muted); }
+.avchip.holiday { background: var(--hivis); color: var(--hivis-ink); }
+.avchip.off { background: var(--line); color: var(--ink); }
+.rateform { display: flex; align-items: center; gap: .25rem; }
+.rateform input { width: 80px; margin: 0; padding: .3rem .4rem; }
+@media (max-width: 560px) {
+  .avrow { grid-template-columns: 1fr 1fr; }
+  .avrow .avday { grid-column: 1 / -1; }
+}
