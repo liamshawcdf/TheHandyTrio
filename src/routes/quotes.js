@@ -1,13 +1,13 @@
 // Quotes: sent from the working estimate, viewed and accepted or declined by the customer, downloadable as PDF.
 const express = require('express');
-const PDFDocument = require('pdfkit');
+const { renderDocument } = require('../pdf');
 const { pool, query } = require('../db');
 const { esc } = require('../layout');
 const { wrap, requireLogin, requireRole } = require('../auth');
 const { ref, day } = require('../format');
 const { money } = require('../estimate');
 const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
-const { notifyStageChange } = require('../notify');
+const { notifyStageChange, notifyOffice } = require('../notify');
 
 const router = express.Router();
 const N = (x) => Number(x) || 0;
@@ -167,6 +167,10 @@ async function respond(req, res, accept) {
     client.release();
   }
   await notifyStageChange(job.id, to, baseUrlOf(req));
+  if (req.user.role === 'customer') {
+    await notifyOffice(`Quote ${to}: ${job.title} (${ref(job.id)})`,
+      `${job.customer_name} has ${to} quote ${qref(q.id)} for ${money(q.total)}.${reason ? `\nReason: ${reason}` : ''}\n\n${accept ? 'Next: request the deposit.\n' : ''}${baseUrlOf(req)}/jobs/${job.id}`, job.id);
+  }
   res.redirect(`/jobs/${job.id}?updated=1#quote`);
 }
 router.post('/jobs/:id/quotes/:qid/accept', requireLogin, wrap((req, res) => respond(req, res, true)));
@@ -182,110 +186,20 @@ router.get('/jobs/:id/quotes/:qid/pdf', requireLogin, wrap(async (req, res) => {
   const cust = (await query('SELECT name, email, phone FROM users WHERE id = $1', [job.customer_id])).rows[0];
   const m = (n) => money(n, s.currency);
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="${qref(q.id)}.pdf"`);
-  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true, info: { Title: `Quote ${qref(q.id)}`, Author: s.business_name } });
-  doc.pipe(res);
-
-  const W = doc.page.width;
-  const L = 50;
-  const R = W - 50;
-  const ink = '#1d2529';
-  const muted = '#5d6a70';
-
-  // Header band
-  doc.rect(0, 0, W, 86).fill('#24414f');
-  doc.rect(0, 86, W, 6).fill('#f2c300');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(s.business_name, L, 28, { width: 300 });
-  const contact = [s.business_address, s.business_phone, s.business_email].filter(Boolean).join('\n');
-  if (contact) doc.font('Helvetica').fontSize(9).text(contact, R - 220, 26, { width: 220, align: 'right' });
-
-  // Title and details
-  doc.fillColor(ink).font('Helvetica-Bold').fontSize(20).text('Quote', L, 115);
-  const meta = [['Quote', qref(q.id)], ['Date', day(q.created_at)], ['Valid until', day(q.valid_until)], ['Job', ref(job.id)]];
-  let my = 115;
-  for (const [k, v] of meta) {
-    doc.font('Helvetica').fontSize(9).fillColor(muted).text(k, R - 200, my, { width: 80 });
-    doc.font('Helvetica-Bold').fillColor(ink).text(v, R - 120, my, { width: 120, align: 'right' });
-    my += 14;
-  }
-  doc.font('Helvetica').fontSize(9).fillColor(muted).text('For', L, 150);
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(ink).text(cust.name, L, 162);
-  doc.font('Helvetica').fontSize(10).text([job.address_line, job.town, job.postcode].filter(Boolean).join('\n'), L, doc.y + 2, { width: 260 });
-
-  doc.y = Math.max(doc.y, my) + 22;
-  doc.font('Helvetica-Bold').fontSize(13).text(job.title, L, doc.y, { width: R - L });
-  if (q.scope) doc.moveDown(0.3).font('Helvetica').fontSize(10).fillColor(ink).text(q.scope, { width: R - L });
-  doc.moveDown(1);
-
-  // Table
-  const itemised = q.layout === 'itemised';
-  const cols = itemised
-    ? [['Description', L, 245, 'left'], ['Qty', L + 250, 45, 'right'], ['Unit', L + 300, 45, 'left'], ['Price', L + 350, 70, 'right'], ['Total', R - 75, 75, 'right']]
-    : [['Description', L, 360, 'left'], ['Total', R - 100, 100, 'right']];
-  const header = () => {
-    const y = doc.y;
-    doc.rect(L, y - 4, R - L, 20).fill('#e9ecea');
-    doc.fillColor(ink).font('Helvetica-Bold').fontSize(9);
-    for (const [t, x, w, a] of cols) doc.text(t, x + 4, y + 2, { width: w - 8, align: a });
-    doc.y = y + 22;
-  };
-  header();
-  doc.font('Helvetica').fontSize(10);
-  for (const r of displayLines(q)) {
-    const vals = itemised ? [r.description, fmtQty(r.qty), r.unit, m(r.price), m(r.total)] : [r.description, m(r.total)];
-    const h = Math.max(14, doc.heightOfString(r.description, { width: cols[0][2] - 8 }));
-    if (doc.y + h > doc.page.height - 140) { doc.addPage(); doc.y = 60; header(); doc.font('Helvetica').fontSize(10); }
-    const y = doc.y;
-    cols.forEach(([, x, w, a], i) => doc.fillColor(ink).text(vals[i], x + 4, y, { width: w - 8, align: a }));
-    doc.y = y + h + 6;
-    doc.moveTo(L, doc.y - 3).lineTo(R, doc.y - 3).lineWidth(0.5).strokeColor('#c9d0cd').stroke();
-  }
-
-  // Totals
-  if (doc.y > doc.page.height - 200) { doc.addPage(); doc.y = 60; }
-  doc.moveDown(0.5);
-  const tot = [['Net', m(q.net)]];
-  if (N(q.vat)) tot.push([`VAT ${N(q.vat_rate)}%`, m(q.vat)]);
-  tot.push(['Total', m(q.total)]);
-  for (const [k, v] of tot) {
-    const y = doc.y;
-    const big = k === 'Total';
-    if (big) doc.moveTo(R - 200, y - 2).lineTo(R, y - 2).lineWidth(1.2).strokeColor(ink).stroke();
-    doc.font(big ? 'Helvetica-Bold' : 'Helvetica').fontSize(big ? 12 : 10).fillColor(ink);
-    doc.text(k, R - 200, y + (big ? 3 : 0), { width: 100 });
-    doc.text(v, R - 100, y + (big ? 3 : 0), { width: 100, align: 'right' });
-    doc.y = y + (big ? 22 : 16);
-  }
-  if (N(q.deposit)) {
-    doc.font('Helvetica').fontSize(10).fillColor(muted).text(`Deposit to book (${N(q.deposit_pct)}%): ${m(q.deposit)}`, R - 260, doc.y + 2, { width: 260, align: 'right' });
-  }
-
-  doc.x = L;
-  doc.moveDown(1.5);
-  if (q.customer_note) doc.font('Helvetica').fontSize(10).fillColor(ink).text(q.customer_note, L, doc.y, { width: R - L }).moveDown(1);
-  if (q.status === 'sent') {
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(ink).text('To accept this quote', L, doc.y, { width: R - L });
-    doc.font('Helvetica').fontSize(10).text(`Log in and open your job: ${baseUrlOf(req)}/jobs/${job.id}`, { width: R - L }).moveDown(1);
-  } else if (q.status === 'accepted') {
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(ink).text(`Accepted ${day(q.responded_at)}`, L, doc.y).moveDown(1);
-  }
-  if (s.quote_terms) {
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('Terms', L, doc.y, { width: R - L });
-    doc.font('Helvetica').fontSize(8.5).text(s.quote_terms, { width: R - L });
-  }
-
-  // Page numbers
-  const range = doc.bufferedPageRange();
-  for (let i = 0; i < range.count; i++) {
-    doc.switchToPage(range.start + i);
-    const bottom = doc.page.margins.bottom;
-    doc.page.margins.bottom = 0;
-    doc.font('Helvetica').fontSize(8).fillColor(muted)
-      .text(`${s.business_name}  |  ${qref(q.id)}  |  Page ${i + 1} of ${range.count}`, L, doc.page.height - 35, { width: R - L, align: 'center' });
-    doc.page.margins.bottom = bottom;
-  }
-  doc.end();
+  const blocks = [{ text: q.customer_note }];
+  if (q.status === 'sent') blocks.push({ title: 'To accept this quote', text: `Log in and open your job: ${baseUrlOf(req)}/jobs/${job.id}` });
+  if (q.status === 'accepted') blocks.push({ title: `Accepted ${day(q.responded_at)}`, text: ' ' });
+  blocks.push({ title: 'Terms', text: s.quote_terms, small: true });
+  const totals = [['Net', m(q.net)]];
+  if (N(q.vat)) totals.push([`VAT ${N(q.vat_rate)}%`, m(q.vat)]);
+  totals.push(['Total', m(q.total), true]);
+  renderDocument({
+    res, s, money: m, download: Boolean(req.query.download), filename: `${qref(q.id)}.pdf`, title: 'Quote',
+    meta: [['Quote', qref(q.id)], ['Date', day(q.created_at)], ['Valid until', day(q.valid_until)], ['Job', ref(job.id)]],
+    customer: { name: cust.name, lines: [job.address_line, job.town, job.postcode] },
+    heading: job.title, intro: q.scope, itemised: q.layout === 'itemised', rows: displayLines(q), totals,
+    afterTotals: N(q.deposit) ? [`Deposit to book (${N(q.deposit_pct)}%): ${m(q.deposit)}`] : [], blocks,
+  });
 }));
 
-module.exports = { router, quotePanel, sendQuoteForm, currentQuote };
+module.exports = { router, quotePanel, sendQuoteForm, currentQuote, displayLines, qref };

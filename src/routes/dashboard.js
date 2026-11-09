@@ -16,10 +16,10 @@ function jobsTable(jobs, { showCustomer = false, showBuilder = false } = {}) {
     <td>${esc(j.postcode)}</td>
     <td><span class="tag">${esc(label(j.status))}</span></td>
     ${showBuilder ? `<td>${esc(j.builder_name || 'Not assigned')}</td>` : ''}
-    <td>${day(j.preferred_start)}</td>
+    <td>${j.scheduled_start ? `<strong>${day(j.scheduled_start)}</strong>` : day(j.preferred_start)}</td>
   </tr>`).join('');
   return `<div class="scroll"><table>
-    <thead><tr><th>Job</th><th>Work</th>${showCustomer ? '<th>Customer</th>' : ''}<th>Postcode</th><th>Stage</th>${showBuilder ? '<th>Builder</th>' : ''}<th>Wanted from</th></tr></thead>
+    <thead><tr><th>Job</th><th>Work</th>${showCustomer ? '<th>Customer</th>' : ''}<th>Postcode</th><th>Stage</th>${showBuilder ? '<th>Builder</th>' : ''}<th>Date</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 
@@ -44,7 +44,7 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
 
   if (user.role === 'builder') {
     const { rows } = await query(
-      `${JOB_SELECT} WHERE j.assigned_builder_id = $1 AND j.status <> ALL($2) ORDER BY j.preferred_start NULLS LAST, j.created_at`,
+      `${JOB_SELECT} WHERE j.assigned_builder_id = $1 AND j.status <> ALL($2) ORDER BY coalesce(j.scheduled_start, j.preferred_start) NULLS LAST, j.created_at`,
       [user.id, CLOSED]
     );
     const clocked = (await query(
@@ -67,8 +67,29 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     `SELECT base_postcode, (SELECT count(*)::int FROM users WHERE role = 'builder' AND active AND coalesce(postcode, '') <> '') AS builder_postcodes
      FROM settings WHERE id = 1`)).rows[0];
 
+  const ACTIONS = [
+    ['request', 'Check the price guide'],
+    ['inspection_required', 'Book an inspection'],
+    ['inspected', 'Send the quote'],
+    ['accepted', 'Request the deposit'],
+    ['deposit_paid', 'Order parts and book the job in'],
+    ['parts_ordered', 'Book the job in'],
+    ['complete', 'Send the final invoice'],
+  ];
+  const actionRows = (await query(
+    `SELECT id, title, status, urgent FROM jobs WHERE status = ANY($1) ORDER BY urgent DESC, updated_at`, [ACTIONS.map((a) => a[0])])).rows;
+  const overdue = (await query(
+    `SELECT i.id, i.job_id, j.title FROM invoices i JOIN jobs j ON j.id = i.job_id
+     WHERE i.status = 'issued' AND i.due_date < current_date ORDER BY i.due_date`)).rows;
+  const todoItems = [
+    ...actionRows.map((j) => `<li><a href="/jobs/${j.id}"><strong>${esc(ACTIONS.find((a) => a[0] === j.status)[1])}</strong>: ${esc(j.title)} (${ref(j.id)})</a>${j.urgent ? ' <span class="tag urgent">Urgent</span>' : ''}</li>`),
+    ...overdue.map((i) => `<li><a href="/jobs/${i.job_id}#invoices"><strong>Chase overdue invoice</strong>: ${esc(i.title)} (${ref(i.job_id)})</a></li>`),
+  ];
+  const todo = `<h2>Needs your attention</h2>${todoItems.length ? `<ul class="todo">${todoItems.join('')}</ul>` : '<p class="empty">Nothing waiting on you right now.</p>'}`;
+
   const body = `
     ${!s.base_postcode && !s.builder_postcodes ? '<div class="error">Add your builders’ home postcodes on the <a href="/admin/users">People</a> page so travel costs can be worked out.</div>' : ''}
+    ${todo}
     <h2>Job pipeline</h2>
     <ol class="pipeline">${pipeline}</ol>
     <h2>Open jobs</h2>

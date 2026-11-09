@@ -205,3 +205,33 @@ code { background: var(--bg); padding: 0 .3rem; border-radius: 3px; font-size: .
 .sendquote { margin: 1rem 0 0; background: var(--bg); }
 .sendquote summary { cursor: pointer; }
 .sendquote form { margin-top: 1rem; }
+
+/* Stage 5: after the quote */
+.nextstep h3, .invoices h3 { font: 600 1.15rem "Barlow Condensed", Barlow, sans-serif; margin: 1rem 0 .5rem; }
+.nextstep h3:first-of-type { margin-top: .25rem; }
+.nextstep form.inline { display: inline-block; margin: .25rem .5rem .25rem 0; }
+.schedule { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap: .75rem; align-items: end; }
+.schedule label { margin: 0; }
+.invoices .invoice { border-top: 1px solid var(--line); padding-top: .75rem; margin-top: .75rem; }
+.invoices .invoice:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+.invoices .invoice.void { opacity: .6; }
+.invoices .wtotals { margin: .5rem 0 .75rem auto; }
+.payhow { background: var(--bg); border-radius: 4px; padding: .5rem 1rem; margin-top: .75rem; }
+.recordpay { margin-top: .75rem; }
+.recordpay summary { cursor: pointer; font-weight: 600; }
+.recordpay .panel { margin-top: .5rem; }
+.payments { margin: 0; padding-left: 1.2rem; }
+.pline { display: grid; grid-template-columns: 1fr 80px 160px 150px 1fr 90px; gap: .5rem; align-items: end; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.pline label { margin: 0; font-size: .85rem; }
+.pline.new { opacity: .8; }
+.pline .del { padding-bottom: .55rem; }
+.route .stops { padding-left: 1.3rem; margin: 0 0 1rem; }
+.route .stops li { margin-bottom: .6rem; }
+.todo { list-style: none; padding: 0; margin: 0; display: grid; gap: .4rem; }
+.todo li { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--hivis); border-radius: 4px; padding: .6rem .8rem; }
+.todo a { text-decoration: none; }
+@media (max-width: 760px) {
+  .schedule { grid-template-columns: 1fr 1fr; }
+  .pline { grid-template-columns: 1fr 1fr; }
+  .pline .desc { grid-column: 1 / -1; }
+}

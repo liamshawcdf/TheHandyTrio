@@ -13,6 +13,7 @@ const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange } = require('../notify');
 const onsite = require('./onsite');
 const quotes = require('./quotes');
+const workflow = require('./workflow');
 
 const router = express.Router();
 
@@ -291,6 +292,9 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   const body = `
   <p class="jobhead"><span class="ref">${ref(job.id)}</span> <span class="tag">${esc(label(job.status))}</span>
     ${job.urgent ? '<span class="tag urgent">Urgent</span>' : ''}</p>
+  ${await workflow.invoicesPanel(job, user, req)}
+  ${await workflow.nextStepPanel(job, user)}
+  ${await workflow.routePanel(job, user)}
   ${await quotes.quotePanel(job, user)}
   ${estimatePanel}
   <div class="jobgrid">
@@ -300,6 +304,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
         <dt>Type of work</dt><dd>${esc(job.work_type || 'Not given')}</dd>
         <dt>Details</dt><dd class="pre">${esc(job.description || 'No details given')}</dd>
         <dt>Wanted from</dt><dd>${day(job.preferred_start)}${job.preferred_end ? ` to ${day(job.preferred_end)}` : ''}</dd>
+        ${job.scheduled_start ? `<dt>Booked in</dt><dd><strong>${day(job.scheduled_start)}${job.scheduled_end ? ` to ${day(job.scheduled_end)}` : ''}</strong></dd>` : ''}
         ${user.role !== 'customer' ? `<dt>Builder</dt><dd>${esc(job.builder_name || 'Not assigned')}</dd>` : ''}
       </dl>
     </section>
@@ -315,6 +320,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   </div>
   ${await onsite.worksheetPanel(job, user)}
   <div id="time">${await onsite.timePanel(job, user)}</div>
+  ${await workflow.partsPanel(job, user)}
   <h2>Photos</h2>
   ${photoGrid}
   ${addPhotos}

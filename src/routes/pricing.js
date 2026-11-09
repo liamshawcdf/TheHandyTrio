@@ -35,30 +35,65 @@ router.get('/admin/suppliers', admin, wrap(async (req, res) => {
     `SELECT s.*, (SELECT count(*)::int FROM price_items p WHERE p.supplier_id = s.id) AS items
      FROM suppliers s ORDER BY s.active DESC, s.name`);
   const list = rows.length ? `<div class="scroll"><table>
-    <thead><tr><th>Supplier</th><th>Phone</th><th>Email</th><th>Items</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Supplier</th><th>Address</th><th>Phone</th><th>Items</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map((s) => `<tr class="${s.active ? '' : 'off'}">
-      <td><a href="/admin/price-list?supplier=${s.id}">${esc(s.name)}</a></td><td>${esc(s.phone)}</td><td>${esc(s.email)}</td>
-      <td>${s.items}</td><td>${s.active ? 'Active' : 'Switched off'}</td>
+      <td><a href="/admin/suppliers/${s.id}">${esc(s.name)}</a></td><td>${s.address || s.postcode ? esc([s.address, s.postcode].filter(Boolean).join(', ')) : '<span class="tag urgent">Needs address</span>'}</td><td>${esc(s.phone)}</td>
+      <td><a href="/admin/price-list?supplier=${s.id}">${s.items}</a></td><td>${s.active ? 'Active' : 'Switched off'}</td>
       <td><form method="post" action="/admin/suppliers/${s.id}/toggle" class="inline"><button class="small">${s.active ? 'Switch off' : 'Switch on'}</button></form></td>
     </tr>`).join('')}</tbody></table></div>` : '<p class="empty">No suppliers yet. Add your local merchants below.</p>';
   const body = `${subnav('/admin/suppliers')}${list}
     <h2>Add a supplier</h2>
     <form method="post" action="/admin/suppliers" class="panel narrow">
       <label>Name<input name="name" required maxlength="120"></label>
+      <label>Branch address<input name="address" maxlength="200"></label>
+      <label>Postcode<input name="postcode" maxlength="10"></label>
       <label>Phone<input name="phone" type="tel"></label>
       <label>Email<input name="email" type="email"></label>
+      <p class="hint">The address is used to route builders past the branch to collect parts.</p>
       <button class="primary">Add supplier</button>
     </form>`;
-  res.send(page({ title: 'Suppliers', user: req.user, notice: req.query.added ? 'Supplier added.' : null, error: req.query.error ? txt(req.query.error) : null, body }));
+  res.send(page({ title: 'Suppliers', user: req.user, notice: req.query.added ? 'Supplier saved.' : null, error: req.query.error ? txt(req.query.error) : null, body }));
 }));
 
 router.post('/admin/suppliers', admin, wrap(async (req, res) => {
   const name = txt(req.body.name, 120);
   if (!name) return res.redirect('/admin/suppliers?error=' + encodeURIComponent('Enter a supplier name.'));
   try {
-    await query('INSERT INTO suppliers (name, phone, email) VALUES ($1, $2, $3)', [name, txt(req.body.phone) || null, txt(req.body.email) || null]);
+    await query('INSERT INTO suppliers (name, phone, email, address, postcode) VALUES ($1, $2, $3, $4, $5)',
+      [name, txt(req.body.phone) || null, txt(req.body.email) || null, txt(req.body.address) || null, txt(req.body.postcode, 10).toUpperCase() || null]);
   } catch (e) {
     if (e.code === '23505') return res.redirect('/admin/suppliers?error=' + encodeURIComponent('That supplier already exists.'));
+    throw e;
+  }
+  res.redirect('/admin/suppliers?added=1');
+}));
+
+router.get('/admin/suppliers/:id', admin, wrap(async (req, res) => {
+  const id = idOf(req.params.id);
+  const s = id && (await query('SELECT * FROM suppliers WHERE id = $1', [id])).rows[0];
+  if (!s) return res.redirect('/admin/suppliers');
+  const body = `${subnav('/admin/suppliers')}
+    <form method="post" action="/admin/suppliers/${s.id}" class="panel narrow">
+      <label>Name<input name="name" value="${esc(s.name)}" required maxlength="120"></label>
+      <label>Branch address<input name="address" value="${esc(s.address)}" maxlength="200"></label>
+      <label>Postcode<input name="postcode" value="${esc(s.postcode)}" maxlength="10"></label>
+      <label>Phone<input name="phone" value="${esc(s.phone)}" type="tel"></label>
+      <label>Email<input name="email" value="${esc(s.email)}" type="email"></label>
+      <button class="primary">Save supplier</button>
+    </form>
+    <p><a href="/admin/price-list?supplier=${s.id}">See this supplier’s prices</a> · <a href="/admin/suppliers">Back to suppliers</a></p>`;
+  res.send(page({ title: s.name, user: req.user, body }));
+}));
+
+router.post('/admin/suppliers/:id', admin, wrap(async (req, res) => {
+  const id = idOf(req.params.id);
+  const name = txt(req.body.name, 120);
+  if (!id || !name) return res.redirect('/admin/suppliers');
+  try {
+    await query('UPDATE suppliers SET name = $1, address = $2, postcode = $3, phone = $4, email = $5 WHERE id = $6',
+      [name, txt(req.body.address) || null, txt(req.body.postcode, 10).toUpperCase() || null, txt(req.body.phone) || null, txt(req.body.email) || null, id]);
+  } catch (e) {
+    if (e.code === '23505') return res.redirect('/admin/suppliers?error=' + encodeURIComponent('Another supplier already has that name.'));
     throw e;
   }
   res.redirect('/admin/suppliers?added=1');

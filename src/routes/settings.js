@@ -48,6 +48,8 @@ const GROUPS = [
   ['Payments', [
     ['deposit_pct', 'Deposit on accepted quotes (%)', 'number', '0.1'],
     ['payment_terms_days', 'Invoice payment terms (days)', 'int', '1'],
+    ['payment_instructions', 'How customers can pay (shown on invoices)', 'textarea'],
+    ['bank_details', 'Bank details for transfers (account name, sort code, account number)', 'textarea'],
   ]],
 ];
 const FIELDS = GROUPS.flatMap(([, f]) => f);

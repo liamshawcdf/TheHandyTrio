@@ -265,3 +265,62 @@ CREATE TABLE IF NOT EXISTS quotes (
   response_note text
 );
 CREATE INDEX IF NOT EXISTS quotes_job_idx ON quotes (job_id);
+
+-- Stage 5: deposits, parts, scheduling, completion, invoices and payments
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_details text NOT NULL DEFAULT '';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS payment_instructions text NOT NULL DEFAULT 'You can pay by bank transfer, or call us to pay by card over the phone. Please use your job reference as the payment reference.';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS postcode text;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS scheduled_start date;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS scheduled_end date;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completion_note text;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id         serial PRIMARY KEY,
+  job_id     int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  kind       text NOT NULL CHECK (kind IN ('deposit','final')),
+  quote_id   int REFERENCES quotes(id),
+  layout     text NOT NULL DEFAULT 'itemised',
+  lines      jsonb NOT NULL,
+  net        numeric NOT NULL,
+  vat_rate   numeric NOT NULL DEFAULT 0,
+  vat        numeric NOT NULL DEFAULT 0,
+  total      numeric NOT NULL,
+  less_paid  numeric NOT NULL DEFAULT 0,
+  amount_due numeric NOT NULL,
+  due_date   date,
+  status     text NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','paid','void')),
+  note       text,
+  created_by int REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  paid_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS invoices_job_idx ON invoices (job_id);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id                serial PRIMARY KEY,
+  job_id            int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  invoice_id        int REFERENCES invoices(id),
+  amount            numeric NOT NULL CHECK (amount > 0),
+  method            text NOT NULL,
+  reference         text,
+  stripe_session_id text UNIQUE,
+  received_at       timestamptz NOT NULL DEFAULT now(),
+  recorded_by       int REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS payments_job_idx ON payments (job_id);
+
+CREATE TABLE IF NOT EXISTS job_parts (
+  id          serial PRIMARY KEY,
+  job_id      int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  description text NOT NULL,
+  qty         numeric NOT NULL DEFAULT 1,
+  unit        text,
+  supplier_id int REFERENCES suppliers(id),
+  status      text NOT NULL DEFAULT 'to_order' CHECK (status IN ('to_order','ordered','ready','collected','delivered')),
+  note        text,
+  sort        int NOT NULL DEFAULT 0,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS job_parts_job_idx ON job_parts (job_id);
