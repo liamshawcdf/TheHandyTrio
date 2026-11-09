@@ -372,3 +372,23 @@ CREATE INDEX IF NOT EXISTS certificates_due_idx ON certificates (next_due) WHERE
 INSERT INTO email_templates (status, subject, body) VALUES
  ('cert_issued', 'Your {cert_name} ({cert_number})', E'Hi {first_name},\n\nPlease find attached your {cert_name}, number {cert_number}, for {job_title}.\n\nPlease keep it somewhere safe. You can also download it any time from your job page:\n{job_link}\n\nThanks,\n{business_name}')
 ON CONFLICT (status) DO NOTHING;
+
+-- Stage 7: password resets, photos in the database, backups, privacy
+CREATE TABLE IF NOT EXISTS password_resets (
+  id         serial PRIMARY KEY,
+  user_id    int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at    timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE job_photos ADD COLUMN IF NOT EXISTS data bytea;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_accepted_at timestamptz;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS privacy_notice text NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS backup_log (
+  id             serial PRIMARY KEY,
+  created_by     int REFERENCES users(id),
+  include_photos boolean NOT NULL DEFAULT false,
+  size_bytes     bigint,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);

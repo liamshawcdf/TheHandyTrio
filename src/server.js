@@ -52,6 +52,7 @@ app.use(require('./routes/onsite').router);
 app.use(require('./routes/quotes').router);
 app.use(require('./routes/workflow').router);
 app.use(require('./routes/certs').router);
+app.use(require('./routes/backups'));
 app.use(require('./routes/emails'));
 
 app.use((req, res) => {

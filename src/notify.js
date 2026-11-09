@@ -25,7 +25,7 @@ function getTransport() {
 const emailReady = () => Boolean(process.env.SMTP_HOST);
 const fill = (text, vars) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m));
 
-async function sendEmail({ to, subject, body, jobId = null, attachments = [] }) {
+async function sendEmail({ to, subject, body, jobId = null, attachments = [], logBody = null }) {
   const t = getTransport();
   let status = 'sent';
   let error = null;
@@ -44,7 +44,7 @@ async function sendEmail({ to, subject, body, jobId = null, attachments = [] }) 
     }
   }
   await query('INSERT INTO email_log (job_id, to_address, subject, body, status, error) VALUES ($1, $2, $3, $4, $5, $6)',
-    [jobId, to || null, subject, body + (attachments.length ? `\n\n[Attached: ${attachments.map((a) => a.filename).join(', ')}]` : ''), status, error]);
+    [jobId, to || null, subject, (logBody || body) + (attachments.length ? `\n\n[Attached: ${attachments.map((a) => a.filename).join(', ')}]` : ''), status, error]);
   return { status, error };
 }
 

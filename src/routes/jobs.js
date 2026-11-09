@@ -19,20 +19,15 @@ const certs = require('./certs');
 const router = express.Router();
 
 // ---------- Photo uploads ----------
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Photos are stored in the database, so they survive app updates and are included in backups.
+// Phones shrink them to about 1600px before upload (see public/js/photos.js), so each is a few hundred KB.
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads'); // older photos saved before this change
 const MAX_PHOTOS = 8;
 const MAX_MB = 15;
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOAD_DIR,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname || '').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6);
-      cb(null, crypto.randomUUID() + ext);
-    },
-  }),
-  limits: { fileSize: MAX_MB * 1024 * 1024, files: MAX_PHOTOS, fields: 30 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_MB * 1024 * 1024, files: MAX_PHOTOS, fields: 40 },
   fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
 });
 
@@ -50,13 +45,13 @@ function photoUpload(req, res, next) {
   });
 }
 
-const removeFiles = (files) => (files || []).forEach((f) => fs.unlink(f.path, () => {}));
+const removeFiles = () => {}; // nothing on disk to tidy up any more
 
 async function savePhotos(client, jobId, files, userId) {
   for (const f of files) {
     await client.query(
-      'INSERT INTO job_photos (job_id, stored_name, original_name, mime_type, size_bytes, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6)',
-      [jobId, f.filename, f.originalname, f.mimetype, f.size, userId]
+      'INSERT INTO job_photos (job_id, stored_name, original_name, mime_type, size_bytes, uploaded_by, data) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [jobId, crypto.randomUUID(), String(f.originalname || 'photo').slice(0, 200), f.mimetype, f.size, userId, f.buffer]
     );
   }
 }
@@ -93,7 +88,7 @@ function requestForm(v, s, t, accessOptions) {
     ${t ? '' : `<label>Type of work<select name="work_type" required>${WORK_TYPES.map(opt).join('')}</select></label>`}
     ${t && t.quantity_question ? `<label>${esc(t.quantity_question)}<input name="quantity" type="number" min="0.5" step="0.5" max="${esc(t.max_quantity)}" value="${esc(v.quantity || '')}" required></label>` : ''}
     <label>Describe the job<textarea name="description" rows="5" maxlength="4000" placeholder="Sizes, materials, what’s wrong, anything you’ve already bought">${esc(v.description)}</textarea></label>
-    <label>Photos (up to ${MAX_PHOTOS})<input type="file" name="photos" accept="image/*" multiple></label>
+    <label>Photos (up to ${MAX_PHOTOS})<input type="file" name="photos" accept="image/*" multiple data-shrink></label>
     <p class="hint">Photos of the area and any damage help us price it accurately.</p>
   </fieldset>
   <fieldset class="panel">
@@ -235,7 +230,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
 
   const addPhotos = photos.length < MAX_PHOTOS && !['paid', 'cancelled', 'declined'].includes(job.status)
     ? `<form method="post" action="/jobs/${job.id}/photos" enctype="multipart/form-data" class="inline-form">
-        <input type="file" name="photos" accept="image/*" multiple required>
+        <input type="file" name="photos" accept="image/*" multiple required data-shrink>
         <button class="small">Add photos</button>
       </form>` : '';
 
@@ -339,10 +334,11 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
 router.get('/jobs/:id/photos/:photoId', requireLogin, wrap(async (req, res) => {
   const job = await loadJob(req);
   if (!job) return res.sendStatus(404);
-  const { rows } = await query('SELECT stored_name, mime_type FROM job_photos WHERE id = $1 AND job_id = $2', [Number(req.params.photoId) || 0, job.id]);
+  const { rows } = await query('SELECT stored_name, mime_type, data FROM job_photos WHERE id = $1 AND job_id = $2', [Number(req.params.photoId) || 0, job.id]);
   if (!rows[0]) return res.sendStatus(404);
   res.set('Cache-Control', 'private, max-age=86400');
   res.type(rows[0].mime_type);
+  if (rows[0].data) return res.send(rows[0].data);
   res.sendFile(path.join(UPLOAD_DIR, path.basename(rows[0].stored_name)), (err) => {
     if (err && !res.headersSent) res.sendStatus(404);
   });

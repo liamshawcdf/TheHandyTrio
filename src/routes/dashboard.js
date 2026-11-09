@@ -90,7 +90,10 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
      WHERE u.active AND q.expires <= current_date + 30 ORDER BY q.expires`)).rows;
   const certsDue = (await query(
     `SELECT count(*)::int AS n FROM certificates WHERE status = 'issued' AND next_due <= current_date + 30`)).rows[0].n;
+  const lastBackup = (await query("SELECT max(created_at) AS t FROM backup_log")).rows[0].t;
+  const backupDue = !lastBackup || Date.now() - new Date(lastBackup) > 7 * 86400000;
   const todoItems = [
+    ...(backupDue ? [`<li><a href="/admin/backups"><strong>Download a backup</strong>: ${lastBackup ? `last one was ${day(lastBackup)}` : 'you haven’t made one yet'}</a></li>`] : []),
     ...quals.map((q) => `<li><a href="/admin/users/${q.user_id}"><strong>${new Date(q.expires) < new Date(new Date().toDateString()) ? 'Qualification expired' : 'Qualification expiring'}</strong>: ${esc(q.name)}, ${esc(q.kind === 'gas' ? 'Gas Safe' : q.kind === 'pat' ? 'PAT' : 'electrical scheme')}, ${day(q.expires)}</a></li>`),
     ...(certsDue ? [`<li><a href="/admin/certificates?due=1"><strong>Certificates due for renewal</strong>: ${certsDue} in the next 30 days or overdue</a></li>`] : []),
     ...actionRows.map((j) => `<li><a href="/jobs/${j.id}"><strong>${esc(ACTIONS.find((a) => a[0] === j.status)[1])}</strong>: ${esc(j.title)} (${ref(j.id)})</a>${j.urgent ? ' <span class="tag urgent">Urgent</span>' : ''}</li>`),

@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../db');
 const { page, esc } = require('../layout');
 const { wrap, requireRole } = require('../auth');
+const privacyDefault = require('../privacy-default');
 
 const router = express.Router();
 
@@ -45,6 +46,9 @@ const GROUPS = [
     ['quote_valid_days', 'Quotes valid for (days)', 'int', '1'],
     ['quote_terms', 'Terms printed on quotes', 'textarea'],
   ]],
+  ['Privacy', [
+    ['privacy_notice', 'Privacy notice shown to customers (review this so it matches how you work)', 'textarea'],
+  ]],
   ['Payments', [
     ['deposit_pct', 'Deposit on accepted quotes (%)', 'number', '0.1'],
     ['payment_terms_days', 'Invoice payment terms (days)', 'int', '1'],
@@ -59,7 +63,7 @@ function form(s) {
     ${fields.map(([key, lbl, type, step]) => type === 'bool'
       ? `<label class="check"><input type="checkbox" name="${key}" ${s[key] ? 'checked' : ''}> ${esc(lbl)}</label>`
       : type === 'textarea'
-      ? `<label>${esc(lbl)}<textarea name="${key}" rows="3" maxlength="2000">${esc(s[key])}</textarea></label>`
+      ? `<label>${esc(lbl)}<textarea name="${key}" rows="${key === 'privacy_notice' ? 16 : 3}" maxlength="10000">${esc(s[key])}</textarea></label>`
       : `<label>${esc(lbl)}<input name="${key}" value="${esc(s[key])}" ${type === 'text' ? '' : `type="number" min="0" step="${step}" required`}></label>`
     ).join('')}
   </fieldset>`).join('');
@@ -68,6 +72,7 @@ function form(s) {
 
 router.get('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   const s = (await query('SELECT * FROM settings WHERE id = 1')).rows[0];
+  if (!s.privacy_notice) s.privacy_notice = privacyDefault(s);
   res.send(page({ title: 'Rates & settings', user: req.user, notice: req.query.saved ? 'Settings saved.' : null, body: form(s) }));
 }));
 
@@ -76,7 +81,7 @@ router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   for (const [key, lbl, type] of FIELDS) {
     const raw = req.body[key];
     if (type === 'bool') values.push(raw === 'on');
-    else if (type === 'text' || type === 'textarea') values.push(String(raw || '').replace(/\r\n/g, '\n').trim().slice(0, 2000));
+    else if (type === 'text' || type === 'textarea') values.push(String(raw || '').replace(/\r\n/g, '\n').trim().slice(0, 10000));
     else {
       const n = Number(raw);
       if (raw === '' || raw === undefined || !Number.isFinite(n) || n < 0 || (type === 'int' && !Number.isInteger(n))) {
