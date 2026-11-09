@@ -15,6 +15,7 @@ const onsite = require('./onsite');
 const quotes = require('./quotes');
 const workflow = require('./workflow');
 const certs = require('./certs');
+const calendar = require('./calendar');
 
 const router = express.Router();
 
@@ -292,6 +293,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   ${await workflow.nextStepPanel(job, user)}
   ${await workflow.routePanel(job, user)}
   ${await quotes.quotePanel(job, user)}
+  ${await calendar.inspectionPanel(job, user)}
   ${estimatePanel}
   <div class="jobgrid">
     <section class="panel">

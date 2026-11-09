@@ -8,12 +8,12 @@ const { sendEmail, fill, emailReady, PLACEHOLDERS } = require('../notify');
 
 const router = express.Router();
 const admin = requireRole('admin');
-const ORDER = [...STATUSES.map(([k]) => k), 'cert_issued'];
-const nameOf = (k) => (k === 'cert_issued' ? 'Certificate issued (PDF attached)' : label(k));
+const ORDER = [...STATUSES.map(([k]) => k), 'inspection_cancelled', 'cert_issued'];
+const nameOf = (k) => ({ cert_issued: 'Certificate issued (PDF attached)', inspection_cancelled: 'Inspection cancelled' }[k] || label(k));
 
 const sample = {
   first_name: 'Sam', customer_name: 'Sam Jones', job_ref: 'HT-00042', job_title: 'Hang an internal door',
-  stage: 'Quote sent', cert_name: 'Landlord Gas Safety Record', cert_number: 'GSR-00007', price_guide: '£215.00 to £295.00 including VAT', job_link: 'https://example.com/jobs/42',
+  stage: 'Quote sent', inspection_time: 'Tuesday 14 January at 10:00 am', booked_dates: '20 Jan 2027 to 22 Jan 2027', cert_name: 'Landlord Gas Safety Record', cert_number: 'GSR-00007', price_guide: '£215.00 to £295.00 including VAT', job_link: 'https://example.com/jobs/42',
 };
 
 const tabs = (active) => `<nav class="subnav">

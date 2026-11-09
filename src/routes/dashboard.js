@@ -3,7 +3,7 @@ const { query } = require('../db');
 const { page, esc } = require('../layout');
 const { wrap, requireLogin } = require('../auth');
 const { STATUSES, CLOSED, label } = require('../statuses');
-const { ref, day } = require('../format');
+const { ref, day, ukDate, addDays } = require('../format');
 
 const router = express.Router();
 
@@ -53,7 +53,13 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     const myQuals = (await query(
       `SELECT kind, expires FROM staff_qualifications WHERE user_id = $1 AND expires <= current_date + 30 ORDER BY expires`, [user.id])).rows;
     const qualWarn = myQuals.map((q) => `<div class="error">Your ${esc(q.kind === 'gas' ? 'Gas Safe' : q.kind === 'pat' ? 'PAT' : 'electrical scheme')} qualification ${new Date(q.expires) < new Date(new Date().toDateString()) ? 'has expired' : 'expires'} on ${day(q.expires)}. Send the office your renewal.</div>`).join('');
+    const { eventsBetween, eventChip } = require('./calendar');
+    const today = ukDate(new Date());
+    const soon = (await eventsBetween(today, addDays(today, 6), user.id)).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    const comingUp = `<h2>Coming up this week</h2>${soon.length ? `<div class="soon">${soon.map((e) => `<div><span class="muted">${e.start === today ? 'Today' : day(e.start)}</span>${eventChip(e)}</div>`).join('')}</div>` : '<p class="empty">Nothing booked in the next 7 days.</p>'}
+      <p><a href="/calendar">Open my diary</a></p>`;
     const body = `${qualWarn}${clocked ? `<div class="notice">You’re clocked on to <a href="/jobs/${clocked.job_id}#time">${esc(clocked.title)}</a> since ${new Date(clocked.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</div>` : ''}
+      ${comingUp}
       <h2>Your jobs</h2>
       ${jobsTable(rows, { showCustomer: true }) || '<p class="empty">No jobs assigned to you yet. The office will assign them here.</p>'}
       <p><a class="button" href="/jobs?show=finished">See my past jobs</a></p>`;
@@ -99,10 +105,15 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     ...actionRows.map((j) => `<li><a href="/jobs/${j.id}"><strong>${esc(ACTIONS.find((a) => a[0] === j.status)[1])}</strong>: ${esc(j.title)} (${ref(j.id)})</a>${j.urgent ? ' <span class="tag urgent">Urgent</span>' : ''}</li>`),
     ...overdue.map((i) => `<li><a href="/jobs/${i.job_id}#invoices"><strong>Chase overdue invoice</strong>: ${esc(i.title)} (${ref(i.job_id)})</a></li>`),
   ];
+  const { eventsBetween, eventChip } = require('./calendar');
+  const todayISO = ukDate(new Date());
+  const todays = await eventsBetween(todayISO, todayISO);
+  const todayBox = `<h2>Today</h2>${todays.length ? `<div class="soon">${todays.map(eventChip).join('')}</div>` : '<p class="empty">Nothing booked today.</p>'}<p><a href="/calendar">Open the calendar</a></p>`;
   const todo = `<h2>Needs your attention</h2>${todoItems.length ? `<ul class="todo">${todoItems.join('')}</ul>` : '<p class="empty">Nothing waiting on you right now.</p>'}`;
 
   const body = `
     ${!s.base_postcode && !s.builder_postcodes ? '<div class="error">Add your builders’ home postcodes on the <a href="/admin/users">People</a> page so travel costs can be worked out.</div>' : ''}
+    ${todayBox}
     ${todo}
     <h2>Job pipeline</h2>
     <ol class="pipeline">${pipeline}</ol>

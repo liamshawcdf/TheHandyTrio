@@ -6,7 +6,7 @@ const ROLE_LABELS = { customer: 'Customer', builder: 'Builder', admin: 'Admin' }
 function nav(user) {
   if (!user) return '<a href="/login">Log in</a><a href="/register">Create account</a>';
   const links = ['<a href="/dashboard">Dashboard</a>'];
-  if (user.role !== 'customer') links.push(`<a href="/jobs">${user.role === 'admin' ? 'All jobs' : 'My jobs'}</a>`);
+  if (user.role !== 'customer') links.push(`<a href="/jobs">${user.role === 'admin' ? 'All jobs' : 'My jobs'}</a>`, `<a href="/calendar">${user.role === 'admin' ? 'Calendar' : 'My diary'}</a>`);
   if (user.role === 'admin') {
     links.push('<a href="/admin/certificates">Certificates</a>', '<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/emails">Emails</a>', '<a href="/admin/backups">Backups</a>', '<a href="/admin/settings">Settings</a>');
   }

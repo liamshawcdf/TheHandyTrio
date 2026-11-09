@@ -39,6 +39,14 @@ const GROUPS = [
     ['urgent_premium_pct', 'Urgent job premium (%)', 'number', '0.1'],
     ['urgent_within_hours', 'Counts as urgent if needed within (hours)', 'int', '1'],
   ]],
+  ['Inspection bookings', [
+    ['inspection_days', 'Days customers can book (e.g. Mon,Tue,Wed,Thu,Fri)', 'text'],
+    ['inspection_start', 'First visit starts (24-hour, e.g. 09:00)', 'text'],
+    ['inspection_end', 'Last visit finishes by (e.g. 16:00)', 'text'],
+    ['inspection_slot_minutes', 'Length of a visit (minutes)', 'int', '5'],
+    ['inspection_notice_hours', 'Minimum notice for booking or changing (hours)', 'int', '1'],
+    ['inspection_horizon_days', 'How far ahead customers can book (days)', 'int', '1'],
+  ]],
   ['Quotes and documents', [
     ['business_address', 'Business address (shown on quotes)', 'textarea'],
     ['business_phone', 'Business phone', 'text'],

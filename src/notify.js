@@ -2,7 +2,7 @@
 const nodemailer = require('nodemailer');
 const { query } = require('./db');
 const { label } = require('./statuses');
-const { ref } = require('./format');
+const { ref, day, longWhen } = require('./format');
 const { customerSummary } = require('./estimate');
 
 let transport;
@@ -64,6 +64,10 @@ async function jobVars(jobId, status, baseUrl) {
       stage: label(status),
       price_guide: job.estimate_snapshot ? customerSummary(job.estimate_snapshot) : 'to be confirmed',
       job_link: `${baseUrl}/jobs/${job.id}`,
+      inspection_time: job.inspection_at ? longWhen(job.inspection_at) : 'a time we will confirm with you',
+      booked_dates: job.scheduled_start
+        ? `${day(job.scheduled_start)}${job.scheduled_end && day(job.scheduled_end) !== day(job.scheduled_start) ? ` to ${day(job.scheduled_end)}` : ''}`
+        : 'dates we will confirm with you',
       business_name: s.business_name,
     },
   };
@@ -93,6 +97,6 @@ async function notifyOffice(subject, body, jobId = null) {
   }
 }
 
-const PLACEHOLDERS = ['cert_name', 'cert_number', 'first_name', 'customer_name', 'job_ref', 'job_title', 'stage', 'price_guide', 'job_link', 'business_name'];
+const PLACEHOLDERS = ['inspection_time', 'booked_dates', 'cert_name', 'cert_number', 'first_name', 'customer_name', 'job_ref', 'job_title', 'stage', 'price_guide', 'job_link', 'business_name'];
 
 module.exports = { jobVars, notifyStageChange, notifyOffice, sendEmail, fill, emailReady, PLACEHOLDERS };
