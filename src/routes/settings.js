@@ -10,7 +10,7 @@ const GROUPS = [
   ['Business', [
     ['business_name', 'Business name', 'text'],
     ['currency', 'Currency symbol', 'text'],
-    ['base_postcode', 'Base postcode (travel is measured from here)', 'text'],
+    ['base_postcode', 'Base postcode (used for travel only when no builder has a home postcode)', 'text'],
     ['service_radius_miles', 'Service area (miles)', 'number', '1'],
     ['vat_registered', 'VAT registered', 'bool'],
     ['vat_rate', 'VAT rate (%)', 'number', '0.1'],

@@ -45,7 +45,32 @@ function milesBetween(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-async function calculateEstimate({ templateId, quantity, accessIds = [], postcode, urgent = false, skipTravel = false }) {
+// Where the van leaves from: the assigned builder's home, otherwise the nearest builder's home, otherwise the base.
+async function travelOrigin(s, to, builderId, warnings) {
+  if (builderId) {
+    const b = (await query("SELECT name, postcode FROM users WHERE id = $1 AND role = 'builder'", [builderId])).rows[0];
+    const loc = b && b.postcode ? await locate(b.postcode) : null;
+    if (loc) return { label: `${b.name}’s home`, postcode: b.postcode, loc };
+    warnings.push(`${b ? b.name : 'The assigned builder'} has no usable home postcode, so travel is from the nearest builder or the base instead.`);
+  }
+  const builders = (await query(
+    "SELECT name, postcode FROM users WHERE role = 'builder' AND active AND coalesce(postcode, '') <> '' ORDER BY id")).rows;
+  let best = null;
+  for (const b of builders) {
+    const loc = await locate(b.postcode);
+    if (!loc) continue;
+    const d = milesBetween(loc, to);
+    if (!best || d < best.d) best = { d, label: `${b.name}’s home (nearest builder)`, postcode: b.postcode, loc };
+  }
+  if (best) return best;
+  if (s.base_postcode) {
+    const loc = await locate(s.base_postcode);
+    if (loc) return { label: 'Base', postcode: s.base_postcode, loc };
+  }
+  return null;
+}
+
+async function calculateEstimate({ templateId, quantity, accessIds = [], postcode, urgent = false, skipTravel = false, builderId = null }) {
   const s = (await query('SELECT * FROM settings WHERE id = 1')).rows[0];
   const t = (await query('SELECT * FROM job_templates WHERE id = $1', [templateId])).rows[0];
   if (!t) return null;
@@ -81,45 +106,55 @@ async function calculateEstimate({ templateId, quantity, accessIds = [], postcod
   let labourBase;
   let labourText;
   let visits;
+  let labourQty;
+  let labourUnit;
+  let labourRate;
+  let estimatedHours;
   if (t.pricing_method === 'day') {
     const days = Math.max(0.5, Math.ceil(units * accessFactor * 2) / 2);
     labourBase = days * crew * N(s.day_rate);
     labourText = `${days} day${days === 1 ? '' : 's'} × ${crew} ${crew === 1 ? 'person' : 'people'} × ${money(s.day_rate, s.currency)}`;
     visits = Math.ceil(days);
+    labourQty = days * crew; labourUnit = 'days'; labourRate = N(s.day_rate);
+    estimatedHours = r2(days * crew * (N(s.hours_per_day) || 8));
   } else if (t.pricing_method === 'fixed') {
     labourBase = units * accessFactor;
     labourText = 'Fixed price' + (accessFactor !== 1 ? ` × access ${r2(accessFactor)}` : '');
     visits = 1;
+    labourQty = 1; labourUnit = 'job'; labourRate = r2(labourBase);
+    estimatedHours = null;
   } else {
     const hours = r2(units * accessFactor);
     labourBase = hours * crew * N(s.hourly_rate);
     labourText = `${hours} hr${hours === 1 ? '' : 's'} × ${crew} ${crew === 1 ? 'person' : 'people'} × ${money(s.hourly_rate, s.currency)}`;
     visits = Math.max(1, Math.ceil(hours / (N(s.hours_per_day) || 8)));
+    labourQty = r2(hours * crew); labourUnit = 'hrs'; labourRate = N(s.hourly_rate);
+    estimatedHours = labourQty;
   }
   labourBase = r2(labourBase);
   const urgentPremium = urgent ? r2(labourBase * pct(s.urgent_premium_pct)) : 0;
   const labour = r2(labourBase + urgentPremium);
 
   // Travel
-  const travel = { oneWayMiles: null, visits, mileage: 0, time: 0, total: 0 };
+  const travel = { from: null, fromPostcode: null, oneWayMiles: null, visits, mileage: 0, time: 0, total: 0 };
   if (!skipTravel) {
-    if (!s.base_postcode) {
-      warnings.push('No base postcode is set, so travel isn’t included.');
+    const to = await locate(postcode);
+    const origin = to ? await travelOrigin(s, to, builderId, warnings) : null;
+    if (!to) {
+      warnings.push('The distance to this postcode couldn’t be found, so travel isn’t included.');
+    } else if (!origin) {
+      warnings.push('No builder home postcodes or base postcode are set, so travel isn’t included.');
     } else {
-      const from = await locate(s.base_postcode);
-      const to = await locate(postcode);
-      if (!from || !to) {
-        warnings.push('The distance to this postcode couldn’t be found, so travel isn’t included.');
-      } else {
-        const oneWay = milesBetween(from, to) * ROAD_FACTOR;
-        const roundTrips = oneWay * 2 * visits;
-        travel.oneWayMiles = r2(oneWay);
-        travel.mileage = r2(roundTrips * N(s.mileage_rate));
-        travel.time = s.charge_travel_time ? r2((roundTrips / AVG_MPH) * N(s.travel_hourly_rate)) : 0;
-        travel.total = r2(travel.mileage + travel.time);
-        if (oneWay > N(s.service_radius_miles)) {
-          warnings.push(`About ${Math.round(oneWay)} miles away, outside the ${N(s.service_radius_miles)}-mile service area.`);
-        }
+      const oneWay = milesBetween(origin.loc, to) * ROAD_FACTOR;
+      const roundTrips = oneWay * 2 * visits;
+      travel.from = origin.label;
+      travel.fromPostcode = origin.postcode;
+      travel.oneWayMiles = r2(oneWay);
+      travel.mileage = r2(roundTrips * N(s.mileage_rate));
+      travel.time = s.charge_travel_time ? r2((roundTrips / AVG_MPH) * N(s.travel_hourly_rate)) : 0;
+      travel.total = r2(travel.mileage + travel.time);
+      if (oneWay > N(s.service_radius_miles)) {
+        warnings.push(`About ${Math.round(oneWay)} miles from ${origin.label.replace(' (nearest builder)', '')}, outside the ${N(s.service_radius_miles)}-mile service area.`);
       }
     }
   }
@@ -148,7 +183,7 @@ async function calculateEstimate({ templateId, quantity, accessIds = [], postcod
     urgent,
     crew,
     materials: { lines, cost: materialsCost, markup, markupPct: N(s.markup_pct), included: t.materials_included, charge: materialsCharge },
-    labour: { text: labourText, accessFactor: r2(accessFactor), base: labourBase, urgentPremium, total: labour },
+    labour: { text: labourText, accessFactor: r2(accessFactor), base: labourBase, urgentPremium, total: labour, qty: labourQty, unit: labourUnit, rate: labourRate, estimatedHours },
     travel,
     subtotal,
     contingency,
@@ -192,7 +227,8 @@ function renderBreakdown(e) {
       <tr class="group"><th colspan="3">Travel</th></tr>
       ${e.travel.oneWayMiles === null
         ? row('<span class="muted">Not included</span>', m(0))
-        : `${row(`${e.travel.oneWayMiles} miles each way × ${e.travel.visits} visit${e.travel.visits === 1 ? '' : 's'}, mileage`, m(e.travel.mileage))}
+        : `${e.travel.from ? row(`From ${esc(e.travel.from)}, ${esc(e.travel.fromPostcode)}`, '') : ''}
+           ${row(`${e.travel.oneWayMiles} miles each way × ${e.travel.visits} visit${e.travel.visits === 1 ? '' : 's'}, mileage`, m(e.travel.mileage))}
            ${e.travel.time ? row('Travel time', m(e.travel.time)) : ''}`}
       ${row('Travel total', m(e.travel.total), 'sum')}
       <tr class="group"><th colspan="3">Totals</th></tr>

@@ -7,7 +7,7 @@ function nav(user) {
   if (!user) return '<a href="/login">Log in</a><a href="/register">Create account</a>';
   const links = ['<a href="/dashboard">Dashboard</a>'];
   if (user.role === 'admin') {
-    links.push('<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/settings">Rates &amp; settings</a>');
+    links.push('<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/emails">Emails</a>', '<a href="/admin/settings">Settings</a>');
   }
   links.push('<form method="post" action="/logout" class="inline"><button class="linkish">Log out</button></form>');
   return links.join('');

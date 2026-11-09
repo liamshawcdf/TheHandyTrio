@@ -157,3 +157,37 @@ td.num, th.num { text-align: right; }
 @media (max-width: 560px) {
   .addmat, .accessrow { grid-template-columns: 1fr; }
 }
+
+/* Stage 3b: worksheets, time, emails */
+.staffonly { border-left: 6px solid var(--slate); }
+.staffonly h2 { margin-top: 0; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.staffonly h2 .tag { font: 500 .8rem Barlow, sans-serif; }
+.small { font-size: .9rem; }
+.buttons { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.clock { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin-bottom: .75rem; }
+.clock p { margin: 0; flex-basis: 100%; }
+.clock label { margin: 0; flex: 1 1 220px; }
+.clock.on { background: var(--ok-bg); color: var(--ok-ink); padding: .75rem; border-radius: 4px; }
+.clock.on input { background: var(--surface); color: var(--ink); }
+
+.worksheet { max-width: 1000px; }
+.wline { display: grid; grid-template-columns: 120px 1fr 80px 80px 100px 90px 90px; gap: .5rem; align-items: end; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.wline label { margin: 0; font-size: .85rem; }
+.wline.new { opacity: .8; }
+.wline .ltotal { text-align: right; padding-bottom: .6rem; font-weight: 600; }
+.wline .del { padding-bottom: .55rem; }
+.wtotals { max-width: 360px; margin: 1rem 0 1rem auto; }
+.wtotals div { display: flex; justify-content: space-between; padding: .2rem 0; }
+.wtotals .sum { border-top: 1px solid var(--line); font-weight: 600; margin-top: .3rem; padding-top: .4rem; }
+.wtotals .grand { font-weight: 700; font-size: 1.15rem; border-top: 2px solid var(--ink); margin-top: .3rem; padding-top: .4rem; }
+
+.emailtpl summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; }
+.emailtpl form { margin-top: 1rem; }
+.preview { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: .75rem 1rem; font-size: .95rem; }
+code { background: var(--bg); padding: 0 .3rem; border-radius: 3px; font-size: .9em; }
+
+@media (max-width: 760px) {
+  .wline { grid-template-columns: 1fr 1fr 1fr; }
+  .wline .desc { grid-column: 1 / -1; grid-row: 1; }
+  .wline .ltotal { text-align: left; }
+}

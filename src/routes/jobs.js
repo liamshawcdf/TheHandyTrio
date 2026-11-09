@@ -9,6 +9,9 @@ const { wrap, requireLogin, requireRole } = require('../auth');
 const { STATUSES, label } = require('../statuses');
 const { ref, day, when, WORK_TYPES } = require('../format');
 const { calculateEstimate, customerSummary, renderBreakdown } = require('../estimate');
+const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
+const { notifyStageChange } = require('../notify');
+const onsite = require('./onsite');
 
 const router = express.Router();
 
@@ -53,36 +56,6 @@ async function savePhotos(client, jobId, files, userId) {
       [jobId, f.filename, f.originalname, f.mimetype, f.size, userId]
     );
   }
-}
-
-// ---------- Access ----------
-const JOB_SELECT = `SELECT j.*, c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
-    b.name AS builder_name
-  FROM jobs j JOIN users c ON c.id = j.customer_id LEFT JOIN users b ON b.id = j.assigned_builder_id`;
-
-function canSee(user, job) {
-  return user.role === 'admin'
-    || (user.role === 'customer' && job.customer_id === user.id)
-    || (user.role === 'builder' && job.assigned_builder_id === user.id);
-}
-
-async function loadJob(req) {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) return null;
-  const { rows } = await query(`${JOB_SELECT} WHERE j.id = $1`, [id]);
-  const job = rows[0];
-  return job && canSee(req.user, job) ? job : null;
-}
-
-const notFound = (req, res) =>
-  res.status(404).send(page({ title: 'Job not found', user: req.user, body: '<p>That job doesn’t exist or isn’t yours to view.</p><p><a href="/dashboard">Back to your dashboard</a></p>' }));
-
-async function setStatus(client, jobId, from, to, userId, note) {
-  await client.query('UPDATE jobs SET status = $1, updated_at = now() WHERE id = $2', [to, jobId]);
-  await client.query(
-    'INSERT INTO job_status_history (job_id, from_status, to_status, changed_by, note) VALUES ($1, $2, $3, $4, $5)',
-    [jobId, from, to, userId, note || null]
-  );
 }
 
 // ---------- New job request (customers) ----------
@@ -235,6 +208,7 @@ router.post('/jobs', requireRole('customer'), photoUpload, wrap(async (req, res)
   } finally {
     client.release();
   }
+  await notifyStageChange(jobId, estimate ? 'estimated' : status, baseUrlOf(req));
   res.redirect(`/jobs/${jobId}?sent=1`);
 }));
 
@@ -276,13 +250,15 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
           <option value="">Not assigned</option>
           ${builders.map((b) => `<option value="${b.id}" ${b.id === job.assigned_builder_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
         </select></label>
+        <p class="hint">Saving re-prices travel from this builder’s home while the job is at estimate stage.</p>
         <button class="small">Save builder</button>
       </form>
       <form method="post" action="/jobs/${job.id}/status" class="panel">
         <label>Move to stage<select name="status">
           ${STATUSES.map(([k, l]) => `<option value="${k}" ${k === job.status ? 'selected' : ''}>${esc(l)}</option>`).join('')}
         </select></label>
-        <label>Note (optional)<input name="note" maxlength="500"></label>
+        <label>Note for the office (optional)<input name="note" maxlength="500"></label>
+        <p class="hint">The customer gets an email about the new stage. They never see this note.</p>
         <button class="small">Update stage</button>
       </form>
     </div>`;
@@ -334,12 +310,14 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
       ${user.role !== 'customer' ? `<p><a class="button" href="${esc(mapsUrl)}" target="_blank" rel="noopener">Directions</a></p>` : ''}
     </section>
   </div>
+  ${await onsite.worksheetPanel(job, user)}
+  <div id="time">${await onsite.timePanel(job, user)}</div>
   <h2>Photos</h2>
   ${photoGrid}
   ${addPhotos}
   ${actions}
   <h2>History</h2>
-  <ol class="history">${history.map((h) => `<li><strong>${esc(label(h.to_status))}</strong> <span class="muted">${when(h.created_at)}${h.by_name ? `, ${esc(h.by_name)}` : ''}</span>${h.note ? `<br>${esc(h.note)}` : ''}</li>`).join('')}</ol>
+  <ol class="history">${history.map((h) => `<li><strong>${esc(label(h.to_status))}</strong> <span class="muted">${when(h.created_at)}${user.role !== 'customer' && h.by_name ? `, ${esc(h.by_name)}` : ''}</span>${user.role !== 'customer' && h.note ? `<br>${esc(h.note)}` : ''}</li>`).join('')}</ol>
   <p><a href="/dashboard">Back to dashboard</a></p>`;
 
   res.send(page({ title: job.title, user, notice, error, body }));
@@ -392,26 +370,27 @@ router.post('/jobs/:id/cancel', requireRole('customer'), wrap(async (req, res) =
     } finally {
       client.release();
     }
+    await notifyStageChange(job.id, 'cancelled', baseUrlOf(req));
   }
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));
 
 // ---------- Admin: recalculate estimate ----------
-router.post('/jobs/:id/estimate', requireRole('admin'), wrap(async (req, res) => {
-  const job = await loadJob(req);
-  if (!job) return notFound(req, res);
-  if (!job.template_id) return res.redirect(`/jobs/${job.id}`);
+const REPRICE_STAGES = ['request', 'estimated', 'inspection_required', 'inspection_booked', 'inspected'];
+
+async function refreshEstimate(job, builderId, userId, baseUrl) {
+  if (!job.template_id) return;
   const est = await calculateEstimate({
     templateId: job.template_id, quantity: job.quantity, accessIds: job.access_option_ids || [],
-    postcode: job.postcode, urgent: job.urgent,
+    postcode: job.postcode, urgent: job.urgent, builderId,
   });
-  if (!est) return res.redirect(`/jobs/${job.id}`);
+  if (!est) return;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('UPDATE jobs SET estimate_low = $1, estimate_high = $2, estimate_snapshot = $3, updated_at = now() WHERE id = $4',
       [est.low, est.high, JSON.stringify(est), job.id]);
-    if (job.status === 'request') await setStatus(client, job.id, 'request', 'estimated', req.user.id, 'Price guide worked out');
+    if (job.status === 'request') await setStatus(client, job.id, 'request', 'estimated', userId, 'Price guide worked out');
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK');
@@ -419,6 +398,13 @@ router.post('/jobs/:id/estimate', requireRole('admin'), wrap(async (req, res) =>
   } finally {
     client.release();
   }
+  if (job.status === 'request') await notifyStageChange(job.id, 'estimated', baseUrl);
+}
+
+router.post('/jobs/:id/estimate', requireRole('admin'), wrap(async (req, res) => {
+  const job = await loadJob(req);
+  if (!job) return notFound(req, res);
+  await refreshEstimate(job, job.assigned_builder_id, req.user.id, baseUrlOf(req));
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));
 
@@ -432,6 +418,8 @@ router.post('/jobs/:id/assign', requireRole('admin'), wrap(async (req, res) => {
     if (!ok) return res.redirect(`/jobs/${job.id}`);
   }
   await query('UPDATE jobs SET assigned_builder_id = $1, updated_at = now() WHERE id = $2', [builderId, job.id]);
+  // Travel now comes from this builder's home, so re-price while the job is still at estimate stage.
+  if (job.estimate_snapshot && REPRICE_STAGES.includes(job.status)) await refreshEstimate(job, builderId, req.user.id, baseUrlOf(req));
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));
 
@@ -451,6 +439,7 @@ router.post('/jobs/:id/status', requireRole('admin'), wrap(async (req, res) => {
     } finally {
       client.release();
     }
+    await notifyStageChange(job.id, to, baseUrlOf(req));
   }
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));

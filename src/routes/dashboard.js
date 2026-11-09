@@ -47,7 +47,11 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
       `${JOB_SELECT} WHERE j.assigned_builder_id = $1 AND j.status <> ALL($2) ORDER BY j.preferred_start NULLS LAST, j.created_at`,
       [user.id, CLOSED]
     );
-    const body = `<h2>Your jobs</h2>
+    const clocked = (await query(
+      `SELECT t.job_id, t.started_at, j.title FROM job_time_entries t JOIN jobs j ON j.id = t.job_id
+       WHERE t.user_id = $1 AND t.ended_at IS NULL LIMIT 1`, [user.id])).rows[0];
+    const body = `${clocked ? `<div class="notice">You’re clocked on to <a href="/jobs/${clocked.job_id}#time">${esc(clocked.title)}</a> since ${new Date(clocked.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</div>` : ''}
+      <h2>Your jobs</h2>
       ${jobsTable(rows, { showCustomer: true }) || '<p class="empty">No jobs assigned to you yet. The office will assign them here.</p>'}`;
     return res.send(page({ title: 'Builder dashboard', user, body }));
   }
@@ -59,10 +63,12 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     .map(([k, l]) => `<li class="${byStatus[k] ? 'has' : ''}"><span class="n">${byStatus[k] || 0}</span><span>${esc(l)}</span></li>`)
     .join('');
   const open = await query(`${JOB_SELECT} WHERE j.status <> ALL($1) ORDER BY j.urgent DESC, j.created_at DESC LIMIT 50`, [CLOSED]);
-  const s = (await query('SELECT base_postcode FROM settings WHERE id = 1')).rows[0];
+  const s = (await query(
+    `SELECT base_postcode, (SELECT count(*)::int FROM users WHERE role = 'builder' AND active AND coalesce(postcode, '') <> '') AS builder_postcodes
+     FROM settings WHERE id = 1`)).rows[0];
 
   const body = `
-    ${!s.base_postcode ? '<div class="error">Add your base postcode in <a href="/admin/settings">Rates &amp; settings</a> so travel costs can be worked out.</div>' : ''}
+    ${!s.base_postcode && !s.builder_postcodes ? '<div class="error">Add your builders’ home postcodes on the <a href="/admin/users">People</a> page so travel costs can be worked out.</div>' : ''}
     <h2>Job pipeline</h2>
     <ol class="pipeline">${pipeline}</ol>
     <h2>Open jobs</h2>

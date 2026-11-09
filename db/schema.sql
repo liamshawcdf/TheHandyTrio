@@ -171,3 +171,67 @@ CREATE TABLE IF NOT EXISTS postcode_locations (
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS template_id int REFERENCES job_templates(id);
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS quantity numeric;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS access_option_ids int[] NOT NULL DEFAULT '{}';
+
+-- Stage 3b: worksheets, time tracking and customer emails
+CREATE TABLE IF NOT EXISTS job_estimate_lines (
+  id          serial PRIMARY KEY,
+  job_id      int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  category    text NOT NULL DEFAULT 'materials' CHECK (category IN ('materials','labour','travel','other')),
+  description text NOT NULL,
+  qty         numeric NOT NULL DEFAULT 1,
+  unit        text,
+  unit_price  numeric NOT NULL DEFAULT 0,
+  sort        int NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS job_estimate_lines_job_idx ON job_estimate_lines (job_id);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS worksheet_updated_at timestamptz;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS worksheet_updated_by int REFERENCES users(id);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS worksheet_notes text;
+
+CREATE TABLE IF NOT EXISTS job_time_entries (
+  id         serial PRIMARY KEY,
+  job_id     int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  user_id    int NOT NULL REFERENCES users(id),
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at   timestamptz,
+  note       text
+);
+CREATE INDEX IF NOT EXISTS job_time_entries_job_idx ON job_time_entries (job_id);
+CREATE INDEX IF NOT EXISTS job_time_entries_open_idx ON job_time_entries (user_id) WHERE ended_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS email_templates (
+  status  text PRIMARY KEY,
+  subject text NOT NULL,
+  body    text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true
+);
+INSERT INTO email_templates (status, subject, body) VALUES
+ ('request', 'We have your job request ({job_ref})', E'Hi {first_name},\n\nThanks for your request for "{job_title}". We will review it and be in touch soon.\n\nYou can follow progress here:\n{job_link}\n\nThanks,\n{business_name}'),
+ ('inspection_required', 'We will need to see your job ({job_ref})', E'Hi {first_name},\n\nThanks for your request for "{job_title}". This job needs a quick visit before we can price it, so we will be in touch to arrange a time.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('estimated', 'Your price guide for {job_title} ({job_ref})', E'Hi {first_name},\n\nThanks for your request. Based on what you told us, our price guide is {price_guide}.\n\nWe will confirm the exact price once we have seen the job.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('inspection_booked', 'Your inspection visit is booked ({job_ref})', E'Hi {first_name},\n\nWe have booked a visit to look at "{job_title}". We will confirm the time with you.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('inspected', 'Thanks for having us round ({job_ref})', E'Hi {first_name},\n\nThanks for letting us look at "{job_title}". We are now preparing your quote.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('quoted', 'Your quote is ready ({job_ref})', E'Hi {first_name},\n\nYour quote for "{job_title}" is ready. You can view it and accept or decline here:\n{job_link}\n\nThanks,\n{business_name}'),
+ ('accepted', 'Thanks for accepting your quote ({job_ref})', E'Hi {first_name},\n\nThanks for accepting our quote for "{job_title}". We will be in touch about the deposit and start date.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('declined', 'Your job has been closed ({job_ref})', E'Hi {first_name},\n\nYour job "{job_title}" has been closed. If anything changes, we would be happy to help in future.\n\nThanks,\n{business_name}'),
+ ('deposit_requested', 'Deposit for your job ({job_ref})', E'Hi {first_name},\n\nTo book in "{job_title}", please pay the deposit. Details are here:\n{job_link}\n\nThanks,\n{business_name}'),
+ ('deposit_paid', 'Deposit received, thank you ({job_ref})', E'Hi {first_name},\n\nWe have received your deposit for "{job_title}". We will now order materials and plan the work.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('parts_ordered', 'Materials ordered for your job ({job_ref})', E'Hi {first_name},\n\nWe have ordered the materials for "{job_title}".\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('scheduled', 'Your job is booked in ({job_ref})', E'Hi {first_name},\n\n"{job_title}" is now booked in. You can see the details here:\n{job_link}\n\nThanks,\n{business_name}'),
+ ('in_progress', 'Work has started ({job_ref})', E'Hi {first_name},\n\nWork on "{job_title}" has started.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('complete', 'Work complete ({job_ref})', E'Hi {first_name},\n\nWe have finished "{job_title}". Thank you for choosing us. Your invoice will follow shortly.\n\n{job_link}\n\nThanks,\n{business_name}'),
+ ('invoiced', 'Your invoice is ready ({job_ref})', E'Hi {first_name},\n\nYour invoice for "{job_title}" is ready here:\n{job_link}\n\nThanks,\n{business_name}'),
+ ('paid', 'Payment received, thank you ({job_ref})', E'Hi {first_name},\n\nWe have received your payment for "{job_title}". Thanks again for choosing us.\n\n{business_name}'),
+ ('cancelled', 'Your job request has been cancelled ({job_ref})', E'Hi {first_name},\n\nYour request "{job_title}" has been cancelled. If this was a mistake, just send a new request.\n\nThanks,\n{business_name}')
+ON CONFLICT (status) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS email_log (
+  id         serial PRIMARY KEY,
+  job_id     int REFERENCES jobs(id) ON DELETE SET NULL,
+  to_address text,
+  subject    text,
+  body       text,
+  status     text NOT NULL,
+  error      text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
