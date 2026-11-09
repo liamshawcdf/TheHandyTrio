@@ -235,3 +235,8 @@ code { background: var(--bg); padding: 0 .3rem; border-radius: 3px; font-size: .
   .pline { grid-template-columns: 1fr 1fr; }
   .pline .desc { grid-column: 1 / -1; }
 }
+
+/* Job history */
+tr.closedjob td { color: var(--muted); }
+tr.closedjob td a { color: var(--ink); }
+.pager { display: flex; gap: 1rem; align-items: center; justify-content: center; margin: 1rem 0; }

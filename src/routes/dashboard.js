@@ -52,7 +52,8 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
        WHERE t.user_id = $1 AND t.ended_at IS NULL LIMIT 1`, [user.id])).rows[0];
     const body = `${clocked ? `<div class="notice">You’re clocked on to <a href="/jobs/${clocked.job_id}#time">${esc(clocked.title)}</a> since ${new Date(clocked.started_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.</div>` : ''}
       <h2>Your jobs</h2>
-      ${jobsTable(rows, { showCustomer: true }) || '<p class="empty">No jobs assigned to you yet. The office will assign them here.</p>'}`;
+      ${jobsTable(rows, { showCustomer: true }) || '<p class="empty">No jobs assigned to you yet. The office will assign them here.</p>'}
+      <p><a class="button" href="/jobs?show=finished">See my past jobs</a></p>`;
     return res.send(page({ title: 'Builder dashboard', user, body }));
   }
 
@@ -93,7 +94,8 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     <h2>Job pipeline</h2>
     <ol class="pipeline">${pipeline}</ol>
     <h2>Open jobs</h2>
-    ${jobsTable(open.rows, { showCustomer: true, showBuilder: true }) || '<p class="empty">No open jobs. New customer requests will appear here.</p>'}`;
+    ${jobsTable(open.rows, { showCustomer: true, showBuilder: true }) || '<p class="empty">No open jobs. New customer requests will appear here.</p>'}
+    <p><a class="button" href="/jobs?show=finished">See finished and closed jobs</a></p>`;
   res.send(page({ title: 'Office dashboard', user, body }));
 }));
 

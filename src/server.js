@@ -45,6 +45,7 @@ app.use(require('./routes/account'));
 app.use(require('./routes/dashboard'));
 app.use(require('./routes/settings'));
 app.use(require('./routes/users'));
+app.use(require('./routes/joblist'));
 app.use(require('./routes/jobs'));
 app.use(require('./routes/pricing'));
 app.use(require('./routes/onsite').router);
