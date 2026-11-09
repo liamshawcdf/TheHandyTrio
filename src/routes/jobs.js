@@ -251,7 +251,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
           <option value="">Not assigned</option>
           ${builders.map((b) => `<option value="${b.id}" ${b.id === job.assigned_builder_id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}
         </select></label>
-        <p class="hint">Saving re-prices travel from this builder’s home while the job is at estimate stage.</p>
+        <p class="hint">Saving re-prices travel on the price guide and working estimate from this builder’s home, until a quote is sent.</p>
         <button class="small">Save builder</button>
       </form>
       <form method="post" action="/jobs/${job.id}/status" class="panel">
@@ -423,6 +423,11 @@ router.post('/jobs/:id/assign', requireRole('admin'), wrap(async (req, res) => {
   await query('UPDATE jobs SET assigned_builder_id = $1, updated_at = now() WHERE id = $2', [builderId, job.id]);
   // Travel now comes from this builder's home, so re-price while the job is still at estimate stage.
   if (job.estimate_snapshot && REPRICE_STAGES.includes(job.status)) await refreshEstimate(job, builderId, req.user.id, baseUrlOf(req));
+  // Same for the working estimate's travel lines, if one has been started.
+  const hasWorksheet = (await query('SELECT 1 FROM job_estimate_lines WHERE job_id = $1 LIMIT 1', [job.id])).rows.length;
+  if (hasWorksheet && REPRICE_STAGES.includes(job.status)) {
+    await onsite.refreshWorksheetTravel({ ...job, assigned_builder_id: builderId }, req.user.id);
+  }
   res.redirect(`/jobs/${job.id}?updated=1`);
 }));
 

@@ -5,7 +5,7 @@ const { pool, query } = require('../db');
 const { page, esc } = require('../layout');
 const { wrap, requireRole } = require('../auth');
 const { when } = require('../format');
-const { money } = require('../estimate');
+const { money, computeTravel } = require('../estimate');
 const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange } = require('../notify');
 const { sendQuoteForm } = require('./quotes');
@@ -75,6 +75,56 @@ async function replaceLines(client, jobId, lines, userId, notes) {
     [userId, notes, jobId]);
 }
 
+// ---------------- Travel on the worksheet ----------------
+// Visits are worked out from the labour lines: hours ÷ crew ÷ hours per day, or days ÷ crew.
+async function suggestedVisits(lines) {
+  const s = (await query('SELECT hours_per_day, default_crew FROM settings WHERE id = 1')).rows[0];
+  const crew = N(s.default_crew) || 1;
+  let hours = 0;
+  let days = 0;
+  for (const l of lines.filter((x) => x.category === 'labour')) {
+    if (/^h(ou)?rs?$/i.test(l.unit || '')) hours += N(l.qty);
+    else if (/^days?$/i.test(l.unit || '')) days += N(l.qty);
+  }
+  const fromHours = hours ? hours / crew / (N(s.hours_per_day) || 8) : 0;
+  return Math.max(1, Math.ceil(fromHours + days / crew - 1e-9));
+}
+
+async function travelLinesFor(job, visits) {
+  const warnings = [];
+  const t = await computeTravel({ postcode: job.postcode, builderId: job.assigned_builder_id, visits, warnings });
+  const lines = [];
+  if (t.mileage) {
+    lines.push({ category: 'travel', description: `Mileage from ${t.from}: ${t.oneWayMiles} miles each way × ${visits} visit${visits === 1 ? '' : 's'}`, qty: 1, unit: 'job', unit_price: t.mileage });
+  }
+  if (t.time) lines.push({ category: 'travel', description: `Travel time, ${visits} visit${visits === 1 ? '' : 's'}`, qty: 1, unit: 'job', unit_price: t.time });
+  return { lines, warnings };
+}
+
+// Swaps the worksheet's travel lines for freshly worked-out ones. Returns any warnings.
+async function refreshWorksheetTravel(job, userId, visits) {
+  const current = await loadLines(job.id);
+  const v = visits || (await suggestedVisits(current));
+  const { lines: travel, warnings } = await travelLinesFor(job, v);
+  const kept = current.filter((l) => l.category !== 'travel')
+    .map((l) => ({ category: l.category, description: l.description, qty: N(l.qty), unit: l.unit, unit_price: N(l.unit_price) }));
+  // Travel goes after labour, before "other" lines such as contingency.
+  const otherAt = kept.findIndex((l) => l.category === 'other');
+  const merged = otherAt === -1 ? [...kept, ...travel] : [...kept.slice(0, otherAt), ...travel, ...kept.slice(otherAt)];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await replaceLines(client, job.id, merged, userId, null);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  return warnings;
+}
+
 // ---------------- Panels shown on the job page ----------------
 async function worksheetPanel(job, user) {
   if (user.role === 'customer') return '';
@@ -85,7 +135,7 @@ async function worksheetPanel(job, user) {
       <p>Adjust the price on site or afterwards. This becomes the quote.</p>
       <div class="buttons">
         ${job.estimate_snapshot ? `<form method="post" action="/jobs/${job.id}/worksheet/from-estimate" class="inline"><button class="primary">Start from the price guide</button></form>` : ''}
-        <a class="button" href="/jobs/${job.id}/worksheet">Start blank</a>
+        <form method="post" action="/jobs/${job.id}/worksheet/blank" class="inline"><button>Start blank</button></form>
       </div>
     </section>`;
   }
@@ -228,6 +278,15 @@ router.get('/jobs/:id/worksheet', staff, wrap(async (req, res) => {
 
   <div class="twocol">
     <section>
+      <h2>Travel</h2>
+      <form method="post" action="/jobs/${job.id}/worksheet/travel" class="panel">
+        <p>${job.builder_name ? `Worked out from ${esc(job.builder_name)}’s home.` : 'No builder assigned yet, so worked out from the nearest builder’s home.'}</p>
+        <label>Number of visits<input name="visits" type="number" min="1" max="60" step="1" value="${await suggestedVisits(lines)}" required></label>
+        <p class="hint">Suggested from the labour lines. Change it if the job needs more or fewer trips.</p>
+        <button class="small">Update travel lines</button>
+      </form>
+    </section>
+    <section>
       <h2>Add from the price list</h2>
       ${items.length ? `<form method="post" action="/jobs/${job.id}/worksheet/add-item" class="panel">
         <label>Item<select name="price_item_id">${items.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.unit)}, ${m(p.price)} cost${p.supplier ? `, ${esc(p.supplier)}` : ''})</option>`).join('')}</select></label>
@@ -245,7 +304,11 @@ router.get('/jobs/:id/worksheet', staff, wrap(async (req, res) => {
       </form>
     </section>` : ''}
   </div>`;
-  res.send(page({ title: `Working estimate: ${job.title}`, user: req.user, notice: req.query.saved ? 'Working estimate saved.' : null, body }));
+  res.send(page({
+    title: `Working estimate: ${job.title}`, user: req.user,
+    notice: req.query.saved ? 'Working estimate saved.' : null,
+    error: req.query.warn ? String(req.query.warn).slice(0, 400) : null, body,
+  }));
 }));
 
 router.post('/jobs/:id/worksheet', staff, wrap(async (req, res) => {
@@ -295,7 +358,9 @@ router.post('/jobs/:id/worksheet/from-estimate', staff, wrap(async (req, res) =>
   } finally {
     client.release();
   }
-  res.redirect(`/jobs/${job.id}/worksheet?saved=1`);
+  // Re-work travel so it starts from the assigned builder's home today.
+  const warnings = await refreshWorksheetTravel(job, req.user.id, job.estimate_snapshot.travel && job.estimate_snapshot.travel.visits);
+  res.redirect(`/jobs/${job.id}/worksheet?saved=1${warnings.length ? '&warn=' + encodeURIComponent(warnings.join(' ')) : ''}`);
 }));
 
 router.post('/jobs/:id/worksheet/add-item', staff, wrap(async (req, res) => {
@@ -314,4 +379,19 @@ router.post('/jobs/:id/worksheet/add-item', staff, wrap(async (req, res) => {
   res.redirect(`/jobs/${job.id}/worksheet?saved=1`);
 }));
 
-module.exports = { router, worksheetPanel, timePanel };
+router.post('/jobs/:id/worksheet/blank', staff, wrap(async (req, res) => {
+  const job = await loadJob(req);
+  if (!job || !mayWork(req.user, job)) return notFound(req, res);
+  const warnings = await refreshWorksheetTravel(job, req.user.id, 1);
+  res.redirect(`/jobs/${job.id}/worksheet?saved=1${warnings.length ? '&warn=' + encodeURIComponent(warnings.join(' ')) : ''}`);
+}));
+
+router.post('/jobs/:id/worksheet/travel', staff, wrap(async (req, res) => {
+  const job = await loadJob(req);
+  if (!job || !mayWork(req.user, job)) return notFound(req, res);
+  const visits = Math.min(60, Math.max(1, Math.round(N(req.body.visits)) || 1));
+  const warnings = await refreshWorksheetTravel(job, req.user.id, visits);
+  res.redirect(`/jobs/${job.id}/worksheet?saved=1${warnings.length ? '&warn=' + encodeURIComponent(warnings.join(' ')) : ''}`);
+}));
+
+module.exports = { router, worksheetPanel, timePanel, refreshWorksheetTravel };

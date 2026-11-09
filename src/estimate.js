@@ -70,6 +70,32 @@ async function travelOrigin(s, to, builderId, warnings) {
   return null;
 }
 
+// Travel cost for a number of visits, from the assigned builder, else the nearest builder, else the base.
+async function computeTravel({ s, postcode, builderId = null, visits = 1, warnings = [] }) {
+  if (!s) s = (await query('SELECT * FROM settings WHERE id = 1')).rows[0];
+  const travel = { from: null, fromPostcode: null, oneWayMiles: null, visits, mileage: 0, time: 0, total: 0 };
+  const to = await locate(postcode);
+  const origin = to ? await travelOrigin(s, to, builderId, warnings) : null;
+  if (!to) {
+    warnings.push('The distance to this postcode couldn’t be found, so travel isn’t included.');
+  } else if (!origin) {
+    warnings.push('No builder home postcodes or base postcode are set, so travel isn’t included.');
+  } else {
+    const oneWay = milesBetween(origin.loc, to) * ROAD_FACTOR;
+    const roundTrips = oneWay * 2 * visits;
+    travel.from = origin.label;
+    travel.fromPostcode = origin.postcode;
+    travel.oneWayMiles = r2(oneWay);
+    travel.mileage = r2(roundTrips * N(s.mileage_rate));
+    travel.time = s.charge_travel_time ? r2((roundTrips / AVG_MPH) * N(s.travel_hourly_rate)) : 0;
+    travel.total = r2(travel.mileage + travel.time);
+    if (oneWay > N(s.service_radius_miles)) {
+      warnings.push(`About ${Math.round(oneWay)} miles from ${origin.label.replace(' (nearest builder)', '')}, outside the ${N(s.service_radius_miles)}-mile service area.`);
+    }
+  }
+  return travel;
+}
+
 async function calculateEstimate({ templateId, quantity, accessIds = [], postcode, urgent = false, skipTravel = false, builderId = null }) {
   const s = (await query('SELECT * FROM settings WHERE id = 1')).rows[0];
   const t = (await query('SELECT * FROM job_templates WHERE id = $1', [templateId])).rows[0];
@@ -136,28 +162,9 @@ async function calculateEstimate({ templateId, quantity, accessIds = [], postcod
   const labour = r2(labourBase + urgentPremium);
 
   // Travel
-  const travel = { from: null, fromPostcode: null, oneWayMiles: null, visits, mileage: 0, time: 0, total: 0 };
-  if (!skipTravel) {
-    const to = await locate(postcode);
-    const origin = to ? await travelOrigin(s, to, builderId, warnings) : null;
-    if (!to) {
-      warnings.push('The distance to this postcode couldn’t be found, so travel isn’t included.');
-    } else if (!origin) {
-      warnings.push('No builder home postcodes or base postcode are set, so travel isn’t included.');
-    } else {
-      const oneWay = milesBetween(origin.loc, to) * ROAD_FACTOR;
-      const roundTrips = oneWay * 2 * visits;
-      travel.from = origin.label;
-      travel.fromPostcode = origin.postcode;
-      travel.oneWayMiles = r2(oneWay);
-      travel.mileage = r2(roundTrips * N(s.mileage_rate));
-      travel.time = s.charge_travel_time ? r2((roundTrips / AVG_MPH) * N(s.travel_hourly_rate)) : 0;
-      travel.total = r2(travel.mileage + travel.time);
-      if (oneWay > N(s.service_radius_miles)) {
-        warnings.push(`About ${Math.round(oneWay)} miles from ${origin.label.replace(' (nearest builder)', '')}, outside the ${N(s.service_radius_miles)}-mile service area.`);
-      }
-    }
-  }
+  const travel = skipTravel
+    ? { from: null, fromPostcode: null, oneWayMiles: null, visits, mileage: 0, time: 0, total: 0 }
+    : await computeTravel({ s, postcode, builderId, visits, warnings });
 
   // Totals
   const subtotal = r2(materialsCharge + labour + travel.total);
@@ -243,4 +250,4 @@ function renderBreakdown(e) {
     ${e.warnings.length ? `<ul class="warnings">${e.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
 }
 
-module.exports = { calculateEstimate, customerSummary, renderBreakdown, money, locate };
+module.exports = { calculateEstimate, computeTravel, customerSummary, renderBreakdown, money, locate };
