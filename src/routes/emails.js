@@ -8,11 +8,12 @@ const { sendEmail, fill, emailReady, PLACEHOLDERS } = require('../notify');
 
 const router = express.Router();
 const admin = requireRole('admin');
-const ORDER = STATUSES.map(([k]) => k);
+const ORDER = [...STATUSES.map(([k]) => k), 'cert_issued'];
+const nameOf = (k) => (k === 'cert_issued' ? 'Certificate issued (PDF attached)' : label(k));
 
 const sample = {
   first_name: 'Sam', customer_name: 'Sam Jones', job_ref: 'HT-00042', job_title: 'Hang an internal door',
-  stage: 'Quote sent', price_guide: '£215.00 to £295.00 including VAT', job_link: 'https://example.com/jobs/42',
+  stage: 'Quote sent', cert_name: 'Landlord Gas Safety Record', cert_number: 'GSR-00007', price_guide: '£215.00 to £295.00 including VAT', job_link: 'https://example.com/jobs/42',
 };
 
 const tabs = (active) => `<nav class="subnav">
@@ -29,11 +30,11 @@ router.get('/admin/emails', admin, wrap(async (req, res) => {
     <p class="lead">The customer gets one of these each time their job moves stage. Office notes are never included.
     You can use: ${PLACEHOLDERS.map((p) => `<code>{${p}}</code>`).join(' ')}</p>
     <form method="post" action="/admin/emails/test" class="filters">
-      <label>Send a test of<select name="status">${rows.map((t) => `<option value="${t.status}">${esc(label(t.status))}</option>`).join('')}</select></label>
+      <label>Send a test of<select name="status">${rows.map((t) => `<option value="${t.status}">${esc(nameOf(t.status))}</option>`).join('')}</select></label>
       <button class="small">Send test to ${esc(req.user.email)}</button>
     </form>
     ${rows.map((t) => `<details class="panel emailtpl" id="${t.status}">
-      <summary><strong>${esc(label(t.status))}</strong> <span class="tag">${t.enabled ? 'On' : 'Off'}</span> <span class="muted">${esc(fill(t.subject, vars))}</span></summary>
+      <summary><strong>${esc(nameOf(t.status))}</strong> <span class="tag">${t.enabled ? 'On' : 'Off'}</span> <span class="muted">${esc(fill(t.subject, vars))}</span></summary>
       <form method="post" action="/admin/emails/${t.status}">
         <label class="check"><input type="checkbox" name="enabled" ${t.enabled ? 'checked' : ''}> Send this email</label>
         <label>Subject<input name="subject" value="${esc(t.subject)}" maxlength="200" required></label>

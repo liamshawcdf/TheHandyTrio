@@ -4,6 +4,8 @@ const { query } = require('../db');
 const { page, esc, ROLE_LABELS } = require('../layout');
 const { wrap, requireRole } = require('../auth');
 const { locate } = require('../estimate');
+const { QUAL_KINDS } = require('../certtypes');
+const { day } = require('../format');
 
 const router = express.Router();
 const admin = requireRole('admin');
@@ -52,17 +54,28 @@ async function checkPerson(v, { isNew }) {
 }
 
 async function renderList(req, res, { notice, error, v = {} } = {}) {
-  const { rows } = await query('SELECT id, role, name, email, phone, postcode, active FROM users ORDER BY role, name');
+  const { rows } = await query(
+    `SELECT u.id, u.role, u.name, u.email, u.phone, u.postcode, u.active,
+       (SELECT json_agg(json_build_object('kind', q.kind, 'expires', q.expires) ORDER BY q.expires) FROM staff_qualifications q WHERE q.user_id = u.id) AS quals
+     FROM users u ORDER BY u.role, u.name`);
+  const today = new Date(new Date().toDateString());
+  const qualTags = (qs) => (qs || []).map((q) => {
+    const exp = new Date(q.expires);
+    const cls = exp < today ? 'urgent' : exp - today < 30 * 86400000 ? 'urgent' : 'ok';
+    const short = q.kind === 'gas' ? 'Gas Safe' : q.kind === 'pat' ? 'PAT' : 'Electrical';
+    return `<span class="tag ${cls}" title="Expires ${day(q.expires)}">${short}${exp < today ? ' expired' : ''}</span>`;
+  }).join(' ');
   const list = rows.map((u) => `<tr class="${u.active ? '' : 'off'}">
     <td><a href="/admin/users/${u.id}">${esc(u.name)}</a></td><td>${esc(u.email)}</td><td>${esc(u.phone)}</td>
     <td>${esc(ROLE_LABELS[u.role])}</td>
     <td>${u.role === 'builder' && !u.postcode ? '<span class="tag urgent">Needs postcode</span>' : esc(u.postcode)}</td>
+    <td>${qualTags(u.quals)}</td>
     <td>${u.active ? 'Active' : 'Switched off'}</td>
     <td>${u.id === req.user.id ? '<span class="muted">You</span>' : `<form method="post" action="/admin/users/${u.id}/toggle" class="inline"><button class="small">${u.active ? 'Switch off' : 'Switch on'}</button></form>`}</td>
   </tr>`).join('');
   const body = `
     <div class="scroll"><table>
-      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Postcode</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Postcode</th><th>Qualifications</th><th>Status</th><th></th></tr></thead>
       <tbody>${list}</tbody></table></div>
     <h2>Add a person</h2>
     <form method="post" action="/admin/users" class="panel narrow">
@@ -96,10 +109,45 @@ router.get('/admin/users/:id', admin, wrap(async (req, res) => {
   const id = Number(req.params.id);
   const u = Number.isInteger(id) && (await query('SELECT * FROM users WHERE id = $1', [id])).rows[0];
   if (!u) return res.redirect('/admin/users');
-  const body = `<form method="post" action="/admin/users/${u.id}" class="panel narrow">
-      ${personFields(u, { isSelf: u.id === req.user.id })}
-      <button class="primary">Save changes</button>
-    </form>
+  const quals = (await query('SELECT * FROM staff_qualifications WHERE user_id = $1 ORDER BY kind, expires DESC', [u.id])).rows;
+  const today = new Date(new Date().toDateString());
+  const kindSel = (sel) => Object.entries(QUAL_KINDS).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+  const qualForm = (q, action, button) => `<form method="post" action="${action}" class="panel qualform">
+      <div class="row">
+        <label>Type<select name="kind">${kindSel(q.kind)}</select></label>
+        <label>Scheme or body<input name="scheme" value="${esc(q.scheme)}" maxlength="80" placeholder="Gas Safe Register, NICEIC, NAPIT"></label>
+      </div>
+      <div class="row">
+        <label>Registration or licence number<input name="number" value="${esc(q.number)}" maxlength="40" required></label>
+        <label>Expiry or re-certification date<input type="date" name="expires" value="${q.expires ? new Date(q.expires).toLocaleDateString('en-CA') : ''}" required></label>
+      </div>
+      <label>Categories or qualifications<input name="categories" value="${esc(q.categories)}" maxlength="300" placeholder="CCN1, CENWAT, HTR1 or 18th Edition, 2391"></label>
+      <label>Notes<input name="notes" value="${esc(q.notes)}" maxlength="300"></label>
+      <button class="small">${button}</button>
+    </form>`;
+  const qualList = quals.map((q) => {
+    const exp = new Date(q.expires);
+    const status = exp < today ? '<span class="tag urgent">Expired</span>' : exp - today < 30 * 86400000 ? '<span class="tag urgent">Expires soon</span>' : '<span class="tag ok">In date</span>';
+    return `<details class="panel qual"><summary><strong>${esc(QUAL_KINDS[q.kind].label)}</strong> ${esc(q.number)} ${status} <span class="muted">expires ${day(q.expires)}</span></summary>
+      ${qualForm(q, `/admin/users/${u.id}/quals/${q.id}`, 'Save')}
+      <form method="post" action="/admin/users/${u.id}/quals/${q.id}/delete" class="inline"><button class="small danger">Delete</button></form>
+    </details>`;
+  }).join('');
+  const body = `<div class="twocol">
+    <section>
+      <form method="post" action="/admin/users/${u.id}" class="panel">
+        ${personFields(u, { isSelf: u.id === req.user.id })}
+        <button class="primary">Save changes</button>
+      </form>
+    </section>
+    <section>
+      <h2>Qualifications</h2>
+      <p class="hint">Gas Safe, electrical scheme and PAT qualifications let this person issue certificates, but only while in date.</p>
+      ${qualList || '<p class="empty">None added.</p>'}
+      <h3>Add a qualification</h3>
+      ${qualForm({ kind: 'gas' }, `/admin/users/${u.id}/quals`, 'Add qualification')}
+    </section>
+    </div>
     <p><a href="/admin/users">Back to people</a></p>`;
   res.send(page({ title: `Edit ${u.name}`, user: req.user, error: req.query.error ? clean(req.query.error) : null, body }));
 }));
@@ -122,6 +170,42 @@ router.post('/admin/users/:id', admin, wrap(async (req, res) => {
     throw e;
   }
   res.redirect('/admin/users?saved=1');
+}));
+
+function readQual(body) {
+  const kind = QUAL_KINDS[body.kind] ? body.kind : null;
+  const expires = /^\d{4}-\d{2}-\d{2}$/.test(body.expires || '') ? body.expires : null;
+  return {
+    kind, expires,
+    scheme: clean(body.scheme, 80) || (kind ? QUAL_KINDS[kind].scheme : ''),
+    number: clean(body.number, 40),
+    categories: clean(body.categories, 300) || null,
+    notes: clean(body.notes, 300) || null,
+  };
+}
+
+router.post('/admin/users/:id/quals', admin, wrap(async (req, res) => {
+  const id = Number(req.params.id) || 0;
+  const q = readQual(req.body);
+  if (!q.kind || !q.expires || !q.number) return res.redirect(`/admin/users/${id}?error=${encodeURIComponent('Fill in the type, number and expiry date.')}`);
+  await query('INSERT INTO staff_qualifications (user_id, kind, scheme, number, categories, expires, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [id, q.kind, q.scheme, q.number, q.categories, q.expires, q.notes]);
+  res.redirect(`/admin/users/${id}`);
+}));
+
+router.post('/admin/users/:id/quals/:qid', admin, wrap(async (req, res) => {
+  const id = Number(req.params.id) || 0;
+  const q = readQual(req.body);
+  if (!q.kind || !q.expires || !q.number) return res.redirect(`/admin/users/${id}?error=${encodeURIComponent('Fill in the type, number and expiry date.')}`);
+  await query('UPDATE staff_qualifications SET kind = $1, scheme = $2, number = $3, categories = $4, expires = $5, notes = $6 WHERE id = $7 AND user_id = $8',
+    [q.kind, q.scheme, q.number, q.categories, q.expires, q.notes, Number(req.params.qid) || 0, id]);
+  res.redirect(`/admin/users/${id}`);
+}));
+
+router.post('/admin/users/:id/quals/:qid/delete', admin, wrap(async (req, res) => {
+  const id = Number(req.params.id) || 0;
+  await query('DELETE FROM staff_qualifications WHERE id = $1 AND user_id = $2', [Number(req.params.qid) || 0, id]);
+  res.redirect(`/admin/users/${id}`);
 }));
 
 router.post('/admin/users/:id/toggle', admin, wrap(async (req, res) => {

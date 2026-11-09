@@ -25,7 +25,7 @@ router.get('/jobs', requireLogin, wrap(async (req, res) => {
   const where = [];
   const params = [];
   const add = (sql, v) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
-  if (!isAdmin) add('j.assigned_builder_id = ?', user.id);
+  if (!isAdmin) add('(j.assigned_builder_id = ? OR j.id IN (SELECT job_id FROM job_team WHERE user_id = $Y))'.replace('$Y', `$${params.length + 1}`), user.id);
   if (builder) add('j.assigned_builder_id = ?', builder);
   if (status) add('j.status = ?', status);
   else if (show === 'open') add('j.status <> ALL(?)', CLOSED);

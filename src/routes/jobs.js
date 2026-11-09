@@ -14,6 +14,7 @@ const { notifyStageChange } = require('../notify');
 const onsite = require('./onsite');
 const quotes = require('./quotes');
 const workflow = require('./workflow');
+const certs = require('./certs');
 
 const router = express.Router();
 
@@ -321,6 +322,8 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   ${await onsite.worksheetPanel(job, user)}
   <div id="time">${await onsite.timePanel(job, user)}</div>
   ${await workflow.partsPanel(job, user)}
+  ${await certs.certificatesPanel(job, user)}
+  ${await certs.teamPanel(job, user)}
   <h2>Photos</h2>
   ${photoGrid}
   ${addPhotos}

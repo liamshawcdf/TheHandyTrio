@@ -9,7 +9,7 @@ const JOB_SELECT = `SELECT j.*, c.name AS customer_name, c.phone AS customer_pho
 function canSee(user, job) {
   return user.role === 'admin'
     || (user.role === 'customer' && job.customer_id === user.id)
-    || (user.role === 'builder' && job.assigned_builder_id === user.id);
+    || (user.role === 'builder' && (job.assigned_builder_id === user.id || job.on_team === true));
 }
 
 async function loadJob(req) {
@@ -17,6 +17,9 @@ async function loadJob(req) {
   if (!Number.isInteger(id) || id < 1) return null;
   const { rows } = await query(`${JOB_SELECT} WHERE j.id = $1`, [id]);
   const job = rows[0];
+  if (job && req.user.role === 'builder' && job.assigned_builder_id !== req.user.id) {
+    job.on_team = (await query('SELECT 1 FROM job_team WHERE job_id = $1 AND user_id = $2', [job.id, req.user.id])).rows.length > 0;
+  }
   return job && canSee(req.user, job) ? job : null;
 }
 

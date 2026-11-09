@@ -324,3 +324,51 @@ CREATE TABLE IF NOT EXISTS job_parts (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS job_parts_job_idx ON job_parts (job_id);
+
+-- Stage 6: engineer qualifications and certificates
+CREATE TABLE IF NOT EXISTS staff_qualifications (
+  id         serial PRIMARY KEY,
+  user_id    int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       text NOT NULL CHECK (kind IN ('gas','electrical','pat')),
+  scheme     text,
+  number     text NOT NULL,
+  categories text,
+  expires    date NOT NULL,
+  notes      text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS staff_qualifications_user_idx ON staff_qualifications (user_id);
+
+CREATE TABLE IF NOT EXISTS job_team (
+  job_id  int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  user_id int NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (job_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS certificates (
+  id              serial PRIMARY KEY,
+  job_id          int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  type            text NOT NULL,
+  engineer_id     int NOT NULL REFERENCES users(id),
+  data            jsonb NOT NULL DEFAULT '{}',
+  status          text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','issued','void')),
+  outcome         text,
+  engineer_name   text,
+  engineer_scheme text,
+  engineer_number text,
+  engineer_categories text,
+  declaration_name text,
+  issued_at       timestamptz,
+  next_due        date,
+  sent_to         text,
+  sent_at         timestamptz,
+  void_reason     text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS certificates_job_idx ON certificates (job_id);
+CREATE INDEX IF NOT EXISTS certificates_due_idx ON certificates (next_due) WHERE status = 'issued';
+
+INSERT INTO email_templates (status, subject, body) VALUES
+ ('cert_issued', 'Your {cert_name} ({cert_number})', E'Hi {first_name},\n\nPlease find attached your {cert_name}, number {cert_number}, for {job_title}.\n\nPlease keep it somewhere safe. You can also download it any time from your job page:\n{job_link}\n\nThanks,\n{business_name}')
+ON CONFLICT (status) DO NOTHING;

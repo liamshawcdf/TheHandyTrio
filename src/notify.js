@@ -25,7 +25,7 @@ function getTransport() {
 const emailReady = () => Boolean(process.env.SMTP_HOST);
 const fill = (text, vars) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k] ?? '') : m));
 
-async function sendEmail({ to, subject, body, jobId = null }) {
+async function sendEmail({ to, subject, body, jobId = null, attachments = [] }) {
   const t = getTransport();
   let status = 'sent';
   let error = null;
@@ -37,14 +37,14 @@ async function sendEmail({ to, subject, body, jobId = null }) {
     error = 'Email sending is not set up yet';
   } else {
     try {
-      await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text: body });
+      await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, text: body, attachments });
     } catch (e) {
       status = 'failed';
       error = String(e.message || e).slice(0, 300);
     }
   }
   await query('INSERT INTO email_log (job_id, to_address, subject, body, status, error) VALUES ($1, $2, $3, $4, $5, $6)',
-    [jobId, to || null, subject, body, status, error]);
+    [jobId, to || null, subject, body + (attachments.length ? `\n\n[Attached: ${attachments.map((a) => a.filename).join(', ')}]` : ''), status, error]);
   return { status, error };
 }
 
@@ -93,6 +93,6 @@ async function notifyOffice(subject, body, jobId = null) {
   }
 }
 
-const PLACEHOLDERS = ['first_name', 'customer_name', 'job_ref', 'job_title', 'stage', 'price_guide', 'job_link', 'business_name'];
+const PLACEHOLDERS = ['cert_name', 'cert_number', 'first_name', 'customer_name', 'job_ref', 'job_title', 'stage', 'price_guide', 'job_link', 'business_name'];
 
-module.exports = { notifyStageChange, notifyOffice, sendEmail, fill, emailReady, PLACEHOLDERS };
+module.exports = { jobVars, notifyStageChange, notifyOffice, sendEmail, fill, emailReady, PLACEHOLDERS };
