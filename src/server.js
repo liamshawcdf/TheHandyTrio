@@ -48,6 +48,7 @@ app.use(require('./routes/users'));
 app.use(require('./routes/jobs'));
 app.use(require('./routes/pricing'));
 app.use(require('./routes/onsite').router);
+app.use(require('./routes/quotes').router);
 app.use(require('./routes/emails'));
 
 app.use((req, res) => {

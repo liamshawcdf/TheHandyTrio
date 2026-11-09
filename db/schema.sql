@@ -235,3 +235,33 @@ CREATE TABLE IF NOT EXISTS email_log (
   error      text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Stage 4: quotes
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS business_address text NOT NULL DEFAULT '';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS business_phone text NOT NULL DEFAULT '';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS business_email text NOT NULL DEFAULT '';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS quote_valid_days int NOT NULL DEFAULT 30;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS quote_terms text NOT NULL DEFAULT 'Prices are based on the work described. Anything extra found once work starts will be agreed with you before we carry it out. A deposit is due on acceptance and the balance on completion.';
+
+CREATE TABLE IF NOT EXISTS quotes (
+  id            serial PRIMARY KEY,
+  job_id        int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  layout        text NOT NULL DEFAULT 'itemised' CHECK (layout IN ('itemised','summary')),
+  scope         text,
+  customer_note text,
+  lines         jsonb NOT NULL,
+  net           numeric NOT NULL,
+  vat_rate      numeric NOT NULL DEFAULT 0,
+  vat           numeric NOT NULL DEFAULT 0,
+  total         numeric NOT NULL,
+  deposit_pct   numeric NOT NULL DEFAULT 0,
+  deposit       numeric NOT NULL DEFAULT 0,
+  valid_until   date,
+  status        text NOT NULL DEFAULT 'sent' CHECK (status IN ('sent','accepted','declined','superseded')),
+  created_by    int REFERENCES users(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  responded_at  timestamptz,
+  responded_by  int REFERENCES users(id),
+  response_note text
+);
+CREATE INDEX IF NOT EXISTS quotes_job_idx ON quotes (job_id);

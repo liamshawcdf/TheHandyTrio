@@ -38,6 +38,13 @@ const GROUPS = [
     ['urgent_premium_pct', 'Urgent job premium (%)', 'number', '0.1'],
     ['urgent_within_hours', 'Counts as urgent if needed within (hours)', 'int', '1'],
   ]],
+  ['Quotes and documents', [
+    ['business_address', 'Business address (shown on quotes)', 'textarea'],
+    ['business_phone', 'Business phone', 'text'],
+    ['business_email', 'Business email', 'text'],
+    ['quote_valid_days', 'Quotes valid for (days)', 'int', '1'],
+    ['quote_terms', 'Terms printed on quotes', 'textarea'],
+  ]],
   ['Payments', [
     ['deposit_pct', 'Deposit on accepted quotes (%)', 'number', '0.1'],
     ['payment_terms_days', 'Invoice payment terms (days)', 'int', '1'],
@@ -49,6 +56,8 @@ function form(s) {
   const groups = GROUPS.map(([name, fields]) => `<fieldset class="panel"><legend>${esc(name)}</legend>
     ${fields.map(([key, lbl, type, step]) => type === 'bool'
       ? `<label class="check"><input type="checkbox" name="${key}" ${s[key] ? 'checked' : ''}> ${esc(lbl)}</label>`
+      : type === 'textarea'
+      ? `<label>${esc(lbl)}<textarea name="${key}" rows="3" maxlength="2000">${esc(s[key])}</textarea></label>`
       : `<label>${esc(lbl)}<input name="${key}" value="${esc(s[key])}" ${type === 'text' ? '' : `type="number" min="0" step="${step}" required`}></label>`
     ).join('')}
   </fieldset>`).join('');
@@ -65,7 +74,7 @@ router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   for (const [key, lbl, type] of FIELDS) {
     const raw = req.body[key];
     if (type === 'bool') values.push(raw === 'on');
-    else if (type === 'text') values.push(String(raw || '').trim());
+    else if (type === 'text' || type === 'textarea') values.push(String(raw || '').replace(/\r\n/g, '\n').trim().slice(0, 2000));
     else {
       const n = Number(raw);
       if (raw === '' || raw === undefined || !Number.isFinite(n) || n < 0 || (type === 'int' && !Number.isInteger(n))) {

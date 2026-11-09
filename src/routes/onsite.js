@@ -8,6 +8,7 @@ const { when } = require('../format');
 const { money } = require('../estimate');
 const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange } = require('../notify');
+const { sendQuoteForm } = require('./quotes');
 
 const router = express.Router();
 const staff = requireRole('admin', 'builder');
@@ -97,6 +98,7 @@ async function worksheetPanel(job, user) {
     <p class="muted">${Object.entries(CATS).filter(([k]) => t.byCat[k]).map(([k, l]) => `${l} ${m(t.byCat[k])}`).join(' · ')}</p>
     <p class="muted">Last updated ${when(job.worksheet_updated_at)}${by ? ` by ${esc(by.name)}` : ''}.</p>
     <a class="button primary" href="/jobs/${job.id}/worksheet">Edit working estimate</a>
+    ${await sendQuoteForm(job, user)}
   </section>`;
 }
 

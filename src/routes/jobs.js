@@ -12,6 +12,7 @@ const { calculateEstimate, customerSummary, renderBreakdown } = require('../esti
 const { loadJob, notFound, setStatus, baseUrlOf } = require('../jobs-shared');
 const { notifyStageChange } = require('../notify');
 const onsite = require('./onsite');
+const quotes = require('./quotes');
 
 const router = express.Router();
 
@@ -265,8 +266,9 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
   }
 
   const e = job.estimate_snapshot;
+  const quote = await quotes.currentQuote(job.id);
   let estimatePanel = '';
-  if (e) {
+  if (e && !(quote && user.role === 'customer')) {
     estimatePanel = `<section class="panel callout estimate">
       <h2>Price guide</h2>
       <p class="bigprice">${esc(customerSummary(e))}</p>
@@ -284,11 +286,12 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
 
   const notice = req.query.sent ? 'Job request sent. We’ll review it and be in touch.'
     : req.query.updated ? 'Job updated.' : req.query.photos ? 'Photos added.' : null;
-  const error = req.query.photoerror ? String(req.query.photoerror).slice(0, 120) : null;
+  const error = req.query.photoerror || req.query.error ? String(req.query.photoerror || req.query.error).slice(0, 160) : null;
 
   const body = `
   <p class="jobhead"><span class="ref">${ref(job.id)}</span> <span class="tag">${esc(label(job.status))}</span>
     ${job.urgent ? '<span class="tag urgent">Urgent</span>' : ''}</p>
+  ${await quotes.quotePanel(job, user)}
   ${estimatePanel}
   <div class="jobgrid">
     <section class="panel">
@@ -427,6 +430,9 @@ router.post('/jobs/:id/status', requireRole('admin'), wrap(async (req, res) => {
   const job = await loadJob(req);
   if (!job) return notFound(req, res);
   const to = String(req.body.status || '');
+  if (to === 'quoted' && !(await quotes.currentQuote(job.id))) {
+    return res.redirect(`/jobs/${job.id}?error=` + encodeURIComponent('Use “Send quote” under the working estimate, so the customer has a quote to see.'));
+  }
   if (STATUSES.some(([k]) => k === to) && to !== job.status) {
     const client = await pool.connect();
     try {
