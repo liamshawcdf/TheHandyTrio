@@ -3,25 +3,23 @@ const { query } = require('../db');
 const { page, esc } = require('../layout');
 const { wrap, requireLogin } = require('../auth');
 const { STATUSES, CLOSED, label } = require('../statuses');
+const { ref, day } = require('../format');
 
 const router = express.Router();
-
-const ref = (id) => 'HT-' + String(id).padStart(5, '0');
-const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
 
 function jobsTable(jobs, { showCustomer = false, showBuilder = false } = {}) {
   if (!jobs.length) return '';
   const rows = jobs.map((j) => `<tr>
-    <td>${ref(j.id)}</td>
-    <td>${esc(j.title)}${j.urgent ? ' <span class="tag urgent">Urgent</span>' : ''}</td>
+    <td><a href="/jobs/${j.id}">${ref(j.id)}</a></td>
+    <td><a href="/jobs/${j.id}">${esc(j.title)}</a>${j.urgent ? ' <span class="tag urgent">Urgent</span>' : ''}</td>
     ${showCustomer ? `<td>${esc(j.customer_name)}</td>` : ''}
     <td>${esc(j.postcode)}</td>
-    <td><span class="tag s-${esc(j.status)}">${esc(label(j.status))}</span></td>
+    <td><span class="tag">${esc(label(j.status))}</span></td>
     ${showBuilder ? `<td>${esc(j.builder_name || 'Not assigned')}</td>` : ''}
-    <td>${day(j.created_at)}</td>
+    <td>${day(j.preferred_start)}</td>
   </tr>`).join('');
   return `<div class="scroll"><table>
-    <thead><tr><th>Job</th><th>Work</th>${showCustomer ? '<th>Customer</th>' : ''}<th>Postcode</th><th>Stage</th>${showBuilder ? '<th>Builder</th>' : ''}<th>Requested</th></tr></thead>
+    <thead><tr><th>Job</th><th>Work</th>${showCustomer ? '<th>Customer</th>' : ''}<th>Postcode</th><th>Stage</th>${showBuilder ? '<th>Builder</th>' : ''}<th>Wanted from</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 
@@ -36,7 +34,8 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     const body = `
       <section class="panel callout">
         <h2>Need something done?</h2>
-        <p>Job requests open in the next update. You’ll be able to describe the work, add photos and pick when you’d like it done.</p>
+        <p>Tell us about the job, add photos, and pick when you’d like it done.</p>
+        <p><a class="button primary" href="/jobs/new">Request a job</a></p>
       </section>
       <h2>Your jobs</h2>
       ${jobsTable(rows) || '<p class="empty">You haven’t requested any jobs yet.</p>'}`;
@@ -59,7 +58,7 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
   const pipeline = STATUSES.filter(([k]) => !CLOSED.includes(k))
     .map(([k, l]) => `<li class="${byStatus[k] ? 'has' : ''}"><span class="n">${byStatus[k] || 0}</span><span>${esc(l)}</span></li>`)
     .join('');
-  const open = await query(`${JOB_SELECT} WHERE j.status <> ALL($1) ORDER BY j.created_at DESC LIMIT 50`, [CLOSED]);
+  const open = await query(`${JOB_SELECT} WHERE j.status <> ALL($1) ORDER BY j.urgent DESC, j.created_at DESC LIMIT 50`, [CLOSED]);
   const s = (await query('SELECT base_postcode FROM settings WHERE id = 1')).rows[0];
 
   const body = `

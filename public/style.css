@@ -84,3 +84,39 @@ tr.off td { color: var(--muted); }
   .row { grid-template-columns: 1fr; }
   h1 { font-size: 1.9rem; }
 }
+
+/* Stage 2: job requests and job pages */
+textarea { display: block; width: 100%; margin-top: .3rem; padding: .6rem .7rem; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; resize: vertical; }
+input[type="file"] { padding: .5rem; }
+.hint { color: var(--muted); font-size: .9rem; margin: -.4rem 0 .6rem; }
+.request { max-width: 640px; }
+.request legend { font: 600 1.2rem "Barlow Condensed", Barlow, sans-serif; padding: 0 .3rem; }
+
+a.button { display: inline-block; text-decoration: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 4px; padding: .55rem 1.1rem; font-weight: 600; }
+a.button.primary { background: var(--hivis); color: var(--hivis-ink); border-color: transparent; }
+button.danger { color: var(--bad-ink); border-color: var(--bad-ink); }
+
+.jobhead { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: -.5rem 0 1rem; }
+.jobhead .ref { font: 700 1.1rem "Barlow Condensed", Barlow, sans-serif; color: var(--muted); }
+.jobgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+.jobgrid .panel { margin: 0; }
+.jobgrid h2 { margin-top: 0; }
+dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1rem; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.pre { white-space: pre-wrap; }
+
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .5rem; margin-bottom: .75rem; }
+.photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block; }
+.inline-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0 0 1rem; }
+.inline-form input[type="file"] { width: auto; flex: 1 1 220px; margin: 0; }
+.admin-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.admin-actions .panel { margin: 0; }
+
+.history { list-style: none; padding: 0; margin: 0 0 1rem; border-left: 3px solid var(--line); }
+.history li { padding: .3rem 0 .6rem 1rem; }
+
+@media (max-width: 560px) {
+  dl { grid-template-columns: 1fr; gap: .1rem; }
+  dd { margin-bottom: .5rem; }
+}

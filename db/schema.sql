@@ -80,3 +80,18 @@ CREATE TABLE IF NOT EXISTS job_status_history (
   note        text,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Stage 2: job requests and photos
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS work_type text;
+
+CREATE TABLE IF NOT EXISTS job_photos (
+  id            serial PRIMARY KEY,
+  job_id        int NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  stored_name   text NOT NULL UNIQUE,
+  original_name text,
+  mime_type     text NOT NULL,
+  size_bytes    int NOT NULL,
+  uploaded_by   int REFERENCES users(id),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS job_photos_job_idx ON job_photos (job_id);

@@ -45,6 +45,7 @@ app.use(require('./routes/account'));
 app.use(require('./routes/dashboard'));
 app.use(require('./routes/settings'));
 app.use(require('./routes/users'));
+app.use(require('./routes/jobs'));
 
 app.use((req, res) => {
   res.status(404).send(page({ title: 'Page not found', user: req.user, body: '<p>That page doesn’t exist.</p><p><a href="/">Go to the start</a></p>' }));
