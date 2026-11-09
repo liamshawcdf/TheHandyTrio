@@ -47,6 +47,12 @@ const GROUPS = [
     ['inspection_notice_hours', 'Minimum notice for booking or changing (hours)', 'int', '1'],
     ['inspection_horizon_days', 'How far ahead customers can book (days)', 'int', '1'],
   ]],
+  ['Reminders and reviews', [
+    ['reminder_days_before', 'Email customers this many days before a certificate is due', 'int', '1'],
+    ['texts_enabled', 'Send day-before text reminders', 'bool'],
+    ['review_link', 'Your Google (or other) review link, e.g. https://g.page/r/…/review', 'text'],
+    ['review_delay_days', 'Ask for a review this many days after a job is paid', 'int', '1'],
+  ]],
   ['Quotes and documents', [
     ['business_address', 'Business address (shown on quotes)', 'textarea'],
     ['business_phone', 'Business phone', 'text'],

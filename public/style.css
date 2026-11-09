@@ -281,3 +281,15 @@ button.slot { background: var(--surface); border: 1px solid var(--line); border-
 button.slot:hover, button.slot:focus-visible { background: var(--hivis); color: var(--hivis-ink); border-color: transparent; }
 .feed { margin-top: 1.5rem; }
 .feed summary { cursor: pointer; }
+
+/* Update 3: reports */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .75rem 1rem; display: flex; flex-direction: column; gap: .2rem; }
+.stat strong { font: 700 1.7rem/1.1 "Barlow Condensed", Barlow, sans-serif; }
+.bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: .4rem; align-items: end; height: 180px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .75rem .75rem 0; }
+.bar { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.bar .fill { display: block; background: var(--slate); border-top: 4px solid var(--hivis); border-radius: 3px 3px 0 0; min-height: 2px; }
+.bar .lbl { text-align: center; font-size: .75rem; color: var(--muted); padding: .3rem 0; }
+td.neg { color: var(--bad-ink); font-weight: 600; }
+tr.sumrow td { font-weight: 700; border-top: 2px solid var(--ink); }
+ul.error { padding-left: 2rem; }

@@ -217,8 +217,16 @@ router.get('/account', requireLogin, wrap(async (req, res) => {
         <label>Confirm new password<input type="password" name="confirm" required minlength="8" autocomplete="new-password"></label>
         <button class="primary">Change password</button>
       </form>
-      ${u.role === 'customer' ? `<h2>Your data</h2>
-      <div class="panel">
+      ${u.role === 'customer' ? `<h2>Messages from us</h2>
+      <form method="post" action="/account/messages" class="panel">
+        <label class="check"><input type="checkbox" name="texts" ${u.sms_opt_out ? '' : 'checked'}> Text me the day before a visit</label>
+        <label class="check"><input type="checkbox" name="reminders" ${u.marketing_opt_out ? '' : 'checked'}> Email me when a safety check or service is due, and ask for feedback after a job</label>
+        <p class="hint">You’ll always get emails about jobs you’ve booked, like quotes and invoices.</p>
+        <button class="small">Save</button>
+      </form>
+      <h2>Your data</h2>` : ''}
+      ${u.role === 'customer' ? `
+<div class="panel">
         <p><a class="button" href="/account/data">Download my data</a></p>
         <details><summary>Ask us to delete my account</summary>
           <form method="post" action="/account/delete-request">
@@ -239,6 +247,11 @@ router.post('/account', requireLogin, wrap(async (req, res) => {
   if (!t('name')) return res.redirect('/account?error=' + encodeURIComponent('Enter your name.'));
   await query('UPDATE users SET name = $1, phone = $2, address_line = $3, town = $4, postcode = $5 WHERE id = $6',
     [t('name', 120), t('phone', 40) || null, t('address_line') || null, t('town', 80) || null, t('postcode', 10).toUpperCase() || null, req.user.id]);
+  res.redirect('/account?saved=1');
+}));
+
+router.post('/account/messages', requireLogin, wrap(async (req, res) => {
+  await query('UPDATE users SET sms_opt_out = $1, marketing_opt_out = $2 WHERE id = $3', [req.body.texts !== 'on', req.body.reminders !== 'on', req.user.id]);
   res.redirect('/account?saved=1');
 }));
 

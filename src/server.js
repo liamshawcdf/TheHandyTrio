@@ -30,6 +30,10 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: 'auto', maxAge: 1000 * 60 * 60 * 24 * 7 },
 }));
 
+// Remember the site's address so background reminders can link back to it.
+const { rememberBaseUrl, startScheduler } = require('./scheduler');
+app.use((req, res, next) => { rememberBaseUrl(`${req.protocol}://${req.get('host')}`); next(); });
+
 // Load the logged-in person on every request.
 app.use(wrap(async (req, res, next) => {
   req.user = null;
@@ -54,6 +58,8 @@ app.use(require('./routes/workflow').router);
 app.use(require('./routes/certs').router);
 app.use(require('./routes/backups'));
 app.use(require('./routes/calendar').router);
+app.use(require('./routes/repeat'));
+app.use(require('./routes/reports'));
 app.use(require('./routes/emails'));
 
 app.use((req, res) => {
@@ -67,4 +73,7 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`TheHandyTrio running on port ${port}`));
+app.listen(port, () => {
+  console.log(`TheHandyTrio running on port ${port}`);
+  startScheduler();
+});

@@ -25,6 +25,7 @@ function personFields(v = {}, { isSelf = false, isNew = false } = {}) {
       <label>Postcode<input name="postcode" value="${esc(v.postcode)}"></label>
     </div>
     <p class="hint">For builders this is their home postcode. Travel costs are worked out from it.</p>
+    ${v.role === 'customer' ? '' : `<label>Pay rate per hour (only used for profit reports)<input name="cost_rate" type="number" step="0.01" min="0" value="${esc(v.cost_rate ?? '')}"></label>`}
     <label>${isNew ? 'Starting password (8 characters or more)' : 'New password (leave blank to keep the current one)'}
       <input type="password" name="password" ${isNew ? 'required' : ''} minlength="8" autocomplete="new-password"></label>`;
 }
@@ -39,6 +40,7 @@ function readPerson(body) {
     town: clean(body.town, 80),
     postcode: clean(body.postcode, 10).toUpperCase(),
     password: String(body.password || ''),
+    cost_rate: String(body.cost_rate ?? '').trim() === '' ? null : Math.max(0, Number(body.cost_rate) || 0),
   };
 }
 
@@ -95,9 +97,9 @@ router.post('/admin/users', admin, wrap(async (req, res) => {
   if (error) return renderList(req, res, { error, v });
   try {
     await query(
-      `INSERT INTO users (role, name, email, phone, address_line, town, postcode, password_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [v.role, v.name, v.email, v.phone || null, v.address_line || null, v.town || null, v.postcode || null, await bcrypt.hash(v.password, 12)]);
+      `INSERT INTO users (role, name, email, phone, address_line, town, postcode, password_hash, cost_rate)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [v.role, v.name, v.email, v.phone || null, v.address_line || null, v.town || null, v.postcode || null, await bcrypt.hash(v.password, 12), v.role === 'customer' ? null : v.cost_rate]);
   } catch (e) {
     if (e.code === '23505') return renderList(req, res, { error: 'Someone already uses that email.', v });
     throw e;
@@ -162,8 +164,8 @@ router.post('/admin/users/:id', admin, wrap(async (req, res) => {
   if (error) return res.redirect(`/admin/users/${id}?error=${encodeURIComponent(error)}`);
   try {
     await query(
-      `UPDATE users SET name = $1, email = $2, phone = $3, role = $4, address_line = $5, town = $6, postcode = $7 WHERE id = $8`,
-      [v.name, v.email, v.phone || null, v.role, v.address_line || null, v.town || null, v.postcode || null, id]);
+      `UPDATE users SET name = $1, email = $2, phone = $3, role = $4, address_line = $5, town = $6, postcode = $7, cost_rate = $8 WHERE id = $9`,
+      [v.name, v.email, v.phone || null, v.role, v.address_line || null, v.town || null, v.postcode || null, v.role === 'customer' ? null : v.cost_rate, id]);
     if (v.password) await query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(v.password, 12), id]);
   } catch (e) {
     if (e.code === '23505') return res.redirect(`/admin/users/${id}?error=${encodeURIComponent('Someone else already uses that email.')}`);

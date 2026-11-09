@@ -8,7 +8,7 @@ function nav(user) {
   const links = ['<a href="/dashboard">Dashboard</a>'];
   if (user.role !== 'customer') links.push(`<a href="/jobs">${user.role === 'admin' ? 'All jobs' : 'My jobs'}</a>`, `<a href="/calendar">${user.role === 'admin' ? 'Calendar' : 'My diary'}</a>`);
   if (user.role === 'admin') {
-    links.push('<a href="/admin/certificates">Certificates</a>', '<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/emails">Emails</a>', '<a href="/admin/backups">Backups</a>', '<a href="/admin/settings">Settings</a>');
+    links.push('<a href="/admin/reports">Reports</a>', '<a href="/admin/certificates">Certificates</a>', '<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/emails">Messages</a>', '<a href="/admin/backups">Backups</a>', '<a href="/admin/settings">Settings</a>');
   }
   links.push('<a href="/account">My account</a>');
   links.push('<form method="post" action="/logout" class="inline"><button class="linkish">Log out</button></form>');

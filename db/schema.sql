@@ -413,3 +413,47 @@ WHERE status = 'scheduled' AND body NOT LIKE '%{booked_dates}%';
 INSERT INTO email_templates (status, subject, body) VALUES
  ('inspection_cancelled', 'Your inspection visit has been cancelled ({job_ref})', E'Hi {first_name},\n\nThe inspection visit for "{job_title}" has been cancelled. You can book a new time from your job page:\n{job_link}\n\nThanks,\n{business_name}')
 ON CONFLICT (status) DO NOTHING;
+
+-- Update 3: reports, reminders, texts and reviews
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cost_rate numeric;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_opt_out boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_out boolean NOT NULL DEFAULT false;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS reminder_days_before int NOT NULL DEFAULT 30;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS review_link text NOT NULL DEFAULT '';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS review_delay_days int NOT NULL DEFAULT 2;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS texts_enabled boolean NOT NULL DEFAULT true;
+
+CREATE TABLE IF NOT EXISTS reminders_sent (
+  id      serial PRIMARY KEY,
+  kind    text NOT NULL,
+  ref_id  int NOT NULL,
+  key     text NOT NULL DEFAULT '',
+  status  text,
+  sent_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (kind, ref_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS sms_templates (
+  key     text PRIMARY KEY,
+  body    text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true
+);
+INSERT INTO sms_templates (key, body) VALUES
+ ('inspection_reminder', 'Hi {first_name}, a reminder that {business_name} are visiting tomorrow, {inspection_time}, to look at "{job_title}". Need to change? Call us or visit {job_link}'),
+ ('job_reminder', 'Hi {first_name}, a reminder that {business_name} start "{job_title}" tomorrow. Please make sure we can get in. Questions? {job_link}')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS sms_log (
+  id         serial PRIMARY KEY,
+  job_id     int REFERENCES jobs(id) ON DELETE SET NULL,
+  to_number  text,
+  body       text,
+  status     text NOT NULL,
+  error      text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO email_templates (status, subject, body) VALUES
+ ('cert_due', 'Your {cert_name} is due soon', E'Hi {first_name},\n\nYour {cert_name} for {address} is due on {due_date}. Keeping it up to date keeps you safe{landlord_note}.\n\nBook your visit here, it only takes a minute:\n{book_link}\n\nThanks,\n{business_name}'),
+ ('review_request', 'How did we do?', E'Hi {first_name},\n\nThanks again for choosing {business_name} for "{job_title}". If you were happy with the work, a quick review would really help a small local business like ours:\n\n{review_link}\n\nThank you,\n{business_name}')
+ON CONFLICT (status) DO NOTHING;
