@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const { pgConfig } = require('../src/pgconfig');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -9,7 +10,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
   let client;
   for (let attempt = 1; attempt <= 30; attempt++) {
-    client = new Client({ connectionString: process.env.DATABASE_URL });
+    client = new Client(pgConfig());
     try {
       await client.connect();
       break;

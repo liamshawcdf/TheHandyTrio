@@ -21,6 +21,16 @@ app.use(helmet());
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// For the hosting's health checks: answers once the database is reachable.
+app.get('/healthz', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.type('text').send('ok');
+  } catch (e) {
+    res.status(503).type('text').send('database unavailable');
+  }
+});
+
 app.use(session({
   name: 'handytrio.sid',
   store: new PgSession({ pool, createTableIfMissing: true }),

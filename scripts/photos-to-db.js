@@ -3,10 +3,11 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const { pgConfig } = require('../src/pgconfig');
 
 (async () => {
   const dir = path.join(__dirname, '..', 'uploads');
-  const c = new Client({ connectionString: process.env.DATABASE_URL });
+  const c = new Client(pgConfig());
   await c.connect();
   const { rows } = await c.query('SELECT id, stored_name FROM job_photos WHERE data IS NULL');
   let moved = 0;

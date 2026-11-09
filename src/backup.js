@@ -3,18 +3,23 @@ const zlib = require('zlib');
 
 // Order matters: tables are restored top to bottom so links between them line up.
 const TABLES = [
-  'users', 'settings', 'suppliers', 'price_items', 'job_templates', 'template_materials', 'access_options',
+  'users', 'staff_availability', 'staff_time_off', 'settings', 'suppliers', 'price_items', 'job_templates', 'template_materials', 'access_options',
   'postcode_locations', 'email_templates', 'jobs', 'job_status_history', 'job_photos', 'job_estimate_lines',
   'job_time_entries', 'quotes', 'invoices', 'payments', 'job_parts', 'staff_qualifications', 'job_team',
-  'certificates', 'email_log',
+  'certificates', 'email_log', 'sms_templates', 'sms_log', 'reminders_sent',
 ];
 
-async function makeBackup(client, { includePhotos }) {
-  const out = { app: 'TheHandyTrio', version: 1, created_at: new Date().toISOString(), include_photos: includePhotos, tables: {} };
-  for (const t of TABLES) {
+// The business's setup without any customers or jobs: staff, settings, price list, templates and messages.
+const SETUP_TABLES = ['users', 'staff_availability', 'staff_time_off', 'settings', 'suppliers', 'price_items', 'job_templates',
+  'template_materials', 'access_options', 'postcode_locations', 'email_templates', 'sms_templates', 'staff_qualifications'];
+
+async function makeBackup(client, { includePhotos, setupOnly = false }) {
+  const out = { app: 'TheHandyTrio', version: 1, created_at: new Date().toISOString(), include_photos: includePhotos, setup_only: setupOnly, tables: {} };
+  for (const t of setupOnly ? SETUP_TABLES : TABLES) {
     const exists = (await client.query('SELECT to_regclass($1) AS r', [t])).rows[0].r;
     if (!exists) continue;
-    const sql = t === 'job_photos' && !includePhotos
+    const sql = setupOnly && t === 'users' ? "SELECT * FROM users WHERE role <> 'customer'"
+      : t === 'job_photos' && !includePhotos
       ? 'SELECT id, job_id, stored_name, original_name, mime_type, size_bytes, uploaded_by, created_at FROM job_photos ORDER BY id'
       : `SELECT * FROM ${t}`;
     const rows = (await client.query(sql)).rows.map((r) => {
@@ -59,7 +64,7 @@ async function restoreBackup(client, gz) {
     await client.query('ROLLBACK');
     throw e;
   }
-  return { tables: present.length, created_at: data.created_at, include_photos: data.include_photos };
+  return { tables: present.length, created_at: data.created_at, include_photos: data.include_photos, setup_only: data.setup_only };
 }
 
-module.exports = { makeBackup, restoreBackup, TABLES };
+module.exports = { makeBackup, restoreBackup, TABLES, SETUP_TABLES };

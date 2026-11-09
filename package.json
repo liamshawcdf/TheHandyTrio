@@ -8,6 +8,23 @@
     "dev": "bash scripts/db.sh && node scripts/migrate.js && node --watch src/server.js",
     "start": "node scripts/migrate.js && node src/server.js",
     "create-admin": "node scripts/create-admin.js",
-    "restore": "node scripts/restore-backup.js"
+    "restore": "node scripts/restore-backup.js",
+    "backup": "node scripts/make-backup.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^9.0.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "express-rate-limit": "^7.0.0",
+    "express-session": "^1.17.0",
+    "helmet": "^7.0.0",
+    "multer": "^2.0.0",
+    "nodemailer": "^6.9.0",
+    "pdfkit": "^0.15.0",
+    "pg": "^8.11.0"
   }
 }

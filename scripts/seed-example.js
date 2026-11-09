@@ -1,9 +1,10 @@
 // Adds one example supplier, three price items and a "Hang an internal door" template, only if no templates exist yet.
 require('dotenv').config();
 const { Client } = require('pg');
+const { pgConfig } = require('../src/pgconfig');
 
 (async () => {
-  const c = new Client({ connectionString: process.env.DATABASE_URL });
+  const c = new Client(pgConfig());
   await c.connect();
   const has = (await c.query('SELECT 1 FROM job_templates LIMIT 1')).rows.length;
   if (has) {

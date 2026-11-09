@@ -1,6 +1,7 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { Client } = require('pg');
+const { pgConfig } = require('../src/pgconfig');
 
 (async () => {
   const [email, name, password] = process.argv.slice(2);
@@ -12,7 +13,7 @@ const { Client } = require('pg');
     console.log('Password must be at least 8 characters.');
     process.exit(1);
   }
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client(pgConfig());
   await client.connect();
   const hash = await bcrypt.hash(password, 12);
   await client.query(
