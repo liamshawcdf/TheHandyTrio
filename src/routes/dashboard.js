@@ -95,7 +95,7 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     `SELECT q.kind, q.expires, u.id AS user_id, u.name FROM staff_qualifications q JOIN users u ON u.id = q.user_id
      WHERE u.active AND q.expires <= current_date + 30 ORDER BY q.expires`)).rows;
   const certsDue = (await query(
-    `SELECT count(*)::int AS n FROM certificates WHERE status = 'issued' AND next_due <= current_date + 30`)).rows[0].n;
+    `SELECT count(*)::int AS n FROM certificates WHERE status = 'issued' AND NOT private AND next_due <= current_date + 30`)).rows[0].n;
   const lastBackup = (await query("SELECT max(created_at) AS t FROM backup_log")).rows[0].t;
   const backupDue = !lastBackup || Date.now() - new Date(lastBackup) > 7 * 86400000;
   const todoItems = [

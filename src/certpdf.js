@@ -30,7 +30,7 @@ function buildCertificatePdf({ cert, number, job, customer, s }) {
     if (contact) doc.font('Helvetica').fontSize(8).text(contact, R - 220, 20, { width: 220, align: 'right' });
 
     doc.fillColor(ink).font('Helvetica-Bold').fontSize(16).text(t.name, L, 98, { width: R - L - 170 });
-    const meta = [['Number', number], ['Issued', fmtDate(cert.issued_at) || 'Draft'], ['Next due', fmtDate(cert.next_due) || 'n/a'], ['Job', job.ref]];
+    const meta = [['Number', number], ['Issued', fmtDate(cert.issued_at) || 'Draft'], ['Next due', fmtDate(cert.next_due) || 'n/a'], ...(job.ref ? [['Job', job.ref]] : [])];
     let my = 98;
     for (const [k, v] of meta) {
       doc.font('Helvetica').fontSize(8).fillColor(muted).text(k, R - 160, my, { width: 60 });
@@ -54,7 +54,7 @@ function buildCertificatePdf({ cert, number, job, customer, s }) {
       doc.font('Helvetica').fontSize(9).fillColor(ink).text(lines.filter(Boolean).join('\n'), x, doc.y + 2, { width: colW });
       return doc.y;
     };
-    const y1 = party(L, 'Installation address', [customer.name, job.address_line, job.town, job.postcode]);
+    const y1 = party(L, 'Installation address', [customer.name, job.address_line, job.town, job.postcode, customer.phone, customer.email]);
     const y2 = party(L + colW + 20, 'Engineer', [cert.engineer_name, cert.engineer_scheme && cert.engineer_number ? `${cert.engineer_scheme} no. ${cert.engineer_number}` : '', cert.engineer_categories]);
     doc.y = Math.max(y1, y2) + 14;
 

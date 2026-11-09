@@ -145,6 +145,27 @@ function readForm(t, body) {
   return data;
 }
 
+function certFormSections(t, d) {
+  return t.sections.map((sec) => {
+    if (!sec.group) {
+      return `<fieldset class="panel"><legend>${esc(sec.title)}</legend><div class="certgrid">${sec.fields.map((f) => input(f[0], f, d[f[0]])).join('')}</div></fieldset>`;
+    }
+    const items = d[sec.group] || [];
+    const count = items.length + sec.blank;
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+      const item = items[i] || {};
+      rows.push(`<div class="certitem ${items[i] ? '' : 'new'}">
+        <p class="fieldlabel">${esc(sec.itemLabel)} ${i + 1}${items[i] ? '' : ' (leave blank if not needed)'}</p>
+        <div class="certgrid">${sec.fields.map((f) => input(`${sec.group}__${i}__${f[0]}`, f, item[f[0]])).join('')}</div>
+        ${items[i] ? `<label class="check"><input type="checkbox" name="${sec.group}__${i}__del"> Remove</label>` : ''}
+      </div>`);
+    }
+    return `<fieldset class="panel"><legend>${esc(sec.title)}</legend><input type="hidden" name="${sec.group}__count" value="${count}">${rows.join('')}
+      <p class="hint">Save to get more blank ${esc(sec.itemLabel.toLowerCase())} rows.</p>${sec.group === 'observations' && t.codesNote ? `<p class="hint">${esc(t.codesNote)}</p>` : ''}</fieldset>`;
+  }).join('');
+}
+
 router.get('/jobs/:id/certs/:cid', requireLogin, wrap(async (req, res) => {
   const job = await loadJob(req);
   if (!job) return notFound(req, res);
@@ -176,24 +197,7 @@ router.get('/jobs/:id/certs/:cid', requireLogin, wrap(async (req, res) => {
     return res.send(page({ title: t.name, user: req.user, notice: req.query.issued ? 'Certificate issued and sent.' : req.query.sent ? 'Sent again.' : null, error: req.query.error ? String(req.query.error).slice(0, 200) : null, body }));
   }
 
-  const sections = t.sections.map((sec) => {
-    if (!sec.group) {
-      return `<fieldset class="panel"><legend>${esc(sec.title)}</legend><div class="certgrid">${sec.fields.map((f) => input(f[0], f, d[f[0]])).join('')}</div></fieldset>`;
-    }
-    const items = d[sec.group] || [];
-    const count = items.length + sec.blank;
-    const rows = [];
-    for (let i = 0; i < count; i++) {
-      const item = items[i] || {};
-      rows.push(`<div class="certitem ${items[i] ? '' : 'new'}">
-        <p class="fieldlabel">${esc(sec.itemLabel)} ${i + 1}${items[i] ? '' : ' (leave blank if not needed)'}</p>
-        <div class="certgrid">${sec.fields.map((f) => input(`${sec.group}__${i}__${f[0]}`, f, item[f[0]])).join('')}</div>
-        ${items[i] ? `<label class="check"><input type="checkbox" name="${sec.group}__${i}__del"> Remove</label>` : ''}
-      </div>`);
-    }
-    return `<fieldset class="panel"><legend>${esc(sec.title)}</legend><input type="hidden" name="${sec.group}__count" value="${count}">${rows.join('')}
-      <p class="hint">Save to get more blank ${esc(sec.itemLabel.toLowerCase())} rows.</p>${sec.group === 'observations' && t.codesNote ? `<p class="hint">${esc(t.codesNote)}</p>` : ''}</fieldset>`;
-  }).join('');
+  const sections = certFormSections(t, d);
 
   const body = `<p class="jobhead"><a href="/jobs/${job.id}#certs">Back to the job</a> <span class="ref">${certNo(c)}</span> <span class="tag">Draft</span></p>
     <form method="post" action="/jobs/${job.id}/certs/${c.id}" class="certform">
@@ -323,13 +327,14 @@ router.get('/admin/certificates', requireRole('admin'), wrap(async (req, res) =>
   const type = TYPES[req.query.type] ? req.query.type : '';
   const due = req.query.due === '1';
   const params = [];
-  const where = ["c.status <> 'draft'"];
+  const where = ["c.status <> 'draft'", 'NOT c.private'];
   if (type) { params.push(type); where.push(`c.type = $${params.length}`); }
   if (due) where.push("c.status = 'issued' AND c.next_due <= current_date + 60");
   const rows = (await query(
     `SELECT c.*, j.title, j.postcode, cu.name AS customer_name FROM certificates c JOIN jobs j ON j.id = c.job_id JOIN users cu ON cu.id = j.customer_id
      WHERE ${where.join(' AND ')} ORDER BY ${due ? 'c.next_due' : 'c.issued_at DESC'} LIMIT 300`, params)).rows;
-  const body = `<form method="get" action="/admin/certificates" class="filters">
+  const body = `<p><a class="button primary" href="/certify">Certify (my own private work)</a></p>
+    <form method="get" action="/admin/certificates" class="filters">
       <label>Type<select name="type"><option value="">All types</option>${Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" name="due" value="1" ${due ? 'checked' : ''}> Due in the next 60 days or overdue</label>
       <button class="small">Show</button>
@@ -349,4 +354,4 @@ router.get('/admin/certificates', requireRole('admin'), wrap(async (req, res) =>
   res.send(page({ title: 'Certificates', user: req.user, body }));
 }));
 
-module.exports = { router, certificatesPanel, teamPanel, currentQuals };
+module.exports = { router, certificatesPanel, teamPanel, currentQuals, qualFor, certFormSections, readForm, addMonths, certNo };

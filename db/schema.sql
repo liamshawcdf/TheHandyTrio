@@ -476,3 +476,16 @@ CREATE TABLE IF NOT EXISTS staff_time_off (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS staff_time_off_user_idx ON staff_time_off (user_id, start_date);
+
+-- Private certificates: engineers' own side jobs, not linked to a company job
+ALTER TABLE certificates ALTER COLUMN job_id DROP NOT NULL;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS private boolean NOT NULL DEFAULT false;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS cust_name text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS cust_address text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS cust_postcode text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS cust_phone text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS cust_email text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS trading_name text;
+ALTER TABLE certificates ADD COLUMN IF NOT EXISTS trading_contact text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS private_trading_name text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS private_trading_contact text;
