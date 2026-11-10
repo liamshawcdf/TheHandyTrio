@@ -121,7 +121,7 @@ router.get('/admin/reports', admin, wrap(async (req, res) => {
        coalesce(sum(extract(epoch FROM (coalesce(t.ended_at, now()) - t.started_at)) / 3600), 0) AS hours,
        (SELECT count(*)::int FROM jobs j WHERE j.assigned_builder_id = u.id AND j.completed_at >= $1 AND j.completed_at < $2) AS finished
      FROM users u LEFT JOIN job_time_entries t ON t.user_id = u.id AND t.started_at >= $1 AND t.started_at < $2
-     WHERE u.role IN ('builder', 'admin') AND u.active GROUP BY u.id ORDER BY u.name`, [fromTs, toTs])).rows.filter((b) => N(b.hours) > 0 || b.finished > 0);
+     WHERE u.role IN ('builder', 'admin', 'manager') AND u.active GROUP BY u.id ORDER BY u.name`, [fromTs, toTs])).rows.filter((b) => N(b.hours) > 0 || b.finished > 0);
 
   const presetOpt = (k, l) => `<option value="${k}" ${p.key === k ? 'selected' : ''}>${l}</option>`;
   const csv = (what) => `/admin/reports/${what}.csv?preset=${p.key}${p.key === 'custom' ? `&from=${p.from}&to=${p.to}` : ''}`;

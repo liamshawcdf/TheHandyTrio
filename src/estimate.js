@@ -48,13 +48,13 @@ function milesBetween(a, b) {
 // Where the van leaves from: the assigned builder's home, otherwise the nearest builder's home, otherwise the base.
 async function travelOrigin(s, to, builderId, warnings) {
   if (builderId) {
-    const b = (await query("SELECT name, postcode FROM users WHERE id = $1 AND role = 'builder'", [builderId])).rows[0];
+    const b = (await query("SELECT name, postcode FROM users WHERE id = $1 AND role IN ('builder', 'manager')", [builderId])).rows[0];
     const loc = b && b.postcode ? await locate(b.postcode) : null;
     if (loc) return { label: `${b.name}’s home`, postcode: b.postcode, loc };
     warnings.push(`${b ? b.name : 'The assigned builder'} has no usable home postcode, so travel is from the nearest builder or the base instead.`);
   }
   const builders = (await query(
-    "SELECT name, postcode FROM users WHERE role = 'builder' AND active AND coalesce(postcode, '') <> '' ORDER BY id")).rows;
+    "SELECT name, postcode FROM users WHERE role IN ('builder', 'manager') AND active AND coalesce(postcode, '') <> '' ORDER BY id")).rows;
   let best = null;
   for (const b of builders) {
     const loc = await locate(b.postcode);

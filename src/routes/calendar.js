@@ -42,7 +42,7 @@ async function openSlots(excludeJobId = 0) {
   const earliest = now + r.notice * 3600000;
   const today = ukDate(new Date());
   const lastDay = addDays(today, r.horizon);
-  const builders = (await query("SELECT id, name, postcode FROM users WHERE role = 'builder' AND active ORDER BY id")).rows;
+  const builders = (await query("SELECT id, name, postcode FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY id")).rows;
   const inspections = (await query(
     `SELECT inspection_at, inspection_minutes, inspection_builder_id FROM jobs
      WHERE inspection_at IS NOT NULL AND inspection_at >= now() - interval '1 day' AND id <> $1 AND status NOT IN ('cancelled', 'declined')`, [excludeJobId])).rows;
@@ -123,7 +123,7 @@ router.get('/jobs/:id/inspection', requireLogin, wrap(async (req, res) => {
         <input type="hidden" name="at" value="${s.at.toISOString()}"><button class="slot">${timeOnly(s.at)}</button></form>`).join('')}</div>
     </div>`).join('')
     : `<p class="empty">No times are free in the next ${rules.horizon} days. ${isAdmin ? 'Book a time by hand below.' : 'Please call us and we’ll fit you in.'}</p>`;
-  const builders = isAdmin ? (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows : [];
+  const builders = isAdmin ? (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY name")).rows : [];
   const manual = isAdmin ? `<h2>Book a time by hand</h2>
     <form method="post" action="/jobs/${job.id}/inspection" class="panel schedule">
       <label>Date<input type="date" name="date" required></label>
@@ -149,7 +149,7 @@ router.post('/jobs/:id/inspection', requireLogin, wrap(async (req, res) => {
     // Office booking by hand: any date and time, any builder.
     if (!/^\d{4}-\d{2}-\d{2}$/.test(req.body.date) || !/^\d{2}:\d{2}$/.test(req.body.time || '')) return res.redirect(`/jobs/${job.id}/inspection?error=${encodeURIComponent('Choose a date and time.')}`);
     at = ukTime(req.body.date, req.body.time);
-    builder = (await query("SELECT id, name FROM users WHERE id = $1 AND role = 'builder' AND active", [Number(req.body.builder_id) || 0])).rows[0];
+    builder = (await query("SELECT id, name FROM users WHERE id = $1 AND role IN ('builder', 'manager') AND active", [Number(req.body.builder_id) || 0])).rows[0];
     if (!builder) return res.redirect(`/jobs/${job.id}/inspection?error=${encodeURIComponent('Choose an inspector.')}`);
     const av = await loadAvailability([builder.id], req.body.date, req.body.date);
     if (!freeBetween(av, builder.id, at, new Date(at.getTime() + rules.slot * 60000)) && req.body.override !== 'on') {
@@ -268,7 +268,7 @@ router.get('/calendar', staff, wrap(async (req, res) => {
   };
   let grid;
   if (isAdmin) {
-    const builders = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+    const builders = (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY name")).rows;
     const av = await loadAvailability(builders.map((b) => b.id), days[0], days[6]);
     grid = `<div class="scroll"><table class="week">
       <thead><tr><th>Builder</th>${days.map((d) => `<th class="${d === today ? 'today' : ''}">${dayHead(d)}</th>`).join('')}</tr></thead>
@@ -329,13 +329,13 @@ function fold(line) {
 
 router.get('/calendar/feed/:token.ics', wrap(async (req, res) => {
   const token = String(req.params.token || '');
-  const u = /^[a-f0-9]{48}$/.test(token) ? (await query("SELECT id, role, name FROM users WHERE calendar_token = $1 AND active AND role IN ('admin', 'builder')", [token])).rows[0] : null;
+  const u = /^[a-f0-9]{48}$/.test(token) ? (await query("SELECT id, role, name FROM users WHERE calendar_token = $1 AND active AND role IN ('admin', 'builder', 'manager')", [token])).rows[0] : null;
   if (!u) return res.sendStatus(404);
   const s = (await query('SELECT business_name FROM settings WHERE id = 1')).rows[0];
   const today = ukDate(new Date());
   const events = await eventsBetween(addDays(today, -30), addDays(today, 180), u.role === 'admin' ? null : u.id);
   const base = baseUrlOf(req);
-  const names = Object.fromEntries((await query("SELECT id, name FROM users WHERE role = 'builder'")).rows.map((b) => [b.id, b.name]));
+  const names = Object.fromEntries((await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager')")).rows.map((b) => [b.id, b.name]));
   const now = icsStamp(new Date());
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${s.business_name.replace(/[^\w ]/g, '')}//Jobs//EN`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     `X-WR-CALNAME:${icsEscape(`${s.business_name}${u.role === 'admin' ? '' : `: ${u.name}`}`)}`, 'X-PUBLISHED-TTL:PT1H', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];

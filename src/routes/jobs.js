@@ -242,7 +242,7 @@ router.get('/jobs/:id', requireLogin, wrap(async (req, res) => {
       <button class="small danger">Cancel this request</button></form>`;
   }
   if (user.role === 'admin') {
-    const builders = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+    const builders = (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY name")).rows;
     actions = `<div class="admin-actions">
       <form method="post" action="/jobs/${job.id}/assign" class="panel">
         <label>Builder<select name="builder_id">
@@ -424,7 +424,7 @@ router.post('/jobs/:id/assign', requireRole('admin'), wrap(async (req, res) => {
   if (!job) return notFound(req, res);
   const builderId = req.body.builder_id ? Number(req.body.builder_id) : null;
   if (builderId !== null) {
-    const ok = (await query("SELECT 1 FROM users WHERE id = $1 AND role = 'builder' AND active", [builderId])).rows.length;
+    const ok = (await query("SELECT 1 FROM users WHERE id = $1 AND role IN ('builder', 'manager') AND active", [builderId])).rows.length;
     if (!ok) return res.redirect(`/jobs/${job.id}`);
   }
   await query('UPDATE jobs SET assigned_builder_id = $1, updated_at = now() WHERE id = $2', [builderId, job.id]);

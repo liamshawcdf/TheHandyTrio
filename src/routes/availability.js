@@ -19,7 +19,7 @@ const dayLabel = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB
 async function whoFor(req, raw) {
   if (req.user.role !== 'admin') return { id: req.user.id, name: req.user.name };
   const id = Number(raw) || req.user.id;
-  return (await query("SELECT id, name FROM users WHERE id = $1 AND role IN ('builder', 'admin')", [id])).rows[0] || { id: req.user.id, name: req.user.name };
+  return (await query("SELECT id, name FROM users WHERE id = $1 AND role IN ('builder', 'admin', 'manager')", [id])).rows[0] || { id: req.user.id, name: req.user.name };
 }
 const backTo = (who, month, extra = '') => `/availability?user=${who.id}${month ? `&month=${month}` : ''}${extra}`;
 
@@ -37,7 +37,7 @@ router.get('/availability', staff, wrap(async (req, res) => {
      WHERE user_id = $1 AND end_date >= current_date - 30 ORDER BY start_date`, [who.id])).rows;
 
   const staffPick = req.user.role === 'admin' ? `<form method="get" action="/availability" class="filters">
-      <label>Person<select name="user">${(await query("SELECT id, name FROM users WHERE role IN ('builder', 'admin') AND active ORDER BY name")).rows
+      <label>Person<select name="user">${(await query("SELECT id, name FROM users WHERE role IN ('builder', 'admin', 'manager') AND active ORDER BY name")).rows
         .map((u) => `<option value="${u.id}" ${u.id === who.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
       <input type="hidden" name="month" value="${month}"><button class="small">Show</button></form>` : '';
 

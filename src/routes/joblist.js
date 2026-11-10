@@ -50,7 +50,7 @@ router.get('/jobs', requireLogin, wrap(async (req, res) => {
      ORDER BY j.updated_at DESC
      LIMIT ${PER_PAGE} OFFSET ${(pageNo - 1) * PER_PAGE}`, params)).rows;
   const cur = (await query('SELECT currency FROM settings WHERE id = 1')).rows[0].currency;
-  const builders = isAdmin ? (await query("SELECT id, name FROM users WHERE role = 'builder' ORDER BY name")).rows : [];
+  const builders = isAdmin ? (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') ORDER BY name")).rows : [];
 
   const keep = (extra) => {
     const p = new URLSearchParams({ q, show, status, builder: builder || '', ...extra });

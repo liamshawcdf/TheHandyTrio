@@ -74,7 +74,7 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
     .join('');
   const open = await query(`${JOB_SELECT} WHERE j.status <> ALL($1) ORDER BY j.urgent DESC, j.created_at DESC LIMIT 50`, [CLOSED]);
   const s = (await query(
-    `SELECT base_postcode, (SELECT count(*)::int FROM users WHERE role = 'builder' AND active AND coalesce(postcode, '') <> '') AS builder_postcodes
+    `SELECT base_postcode, (SELECT count(*)::int FROM users WHERE role IN ('builder', 'manager') AND active AND coalesce(postcode, '') <> '') AS builder_postcodes
      FROM settings WHERE id = 1`)).rows[0];
 
   const ACTIONS = [
@@ -109,11 +109,19 @@ router.get('/dashboard', requireLogin, wrap(async (req, res) => {
   const todayISO = ukDate(new Date());
   const todays = await eventsBetween(todayISO, todayISO);
   const { loadAvailability, dayStatus, statusLabel } = require('../availability');
-  const staffRows = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+  const staffRows = (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY name")).rows;
   const avToday = await loadAvailability(staffRows.map((b) => b.id), todayISO, todayISO);
   const notAny = staffRows.map((b) => ({ b, st: dayStatus(avToday, b.id, todayISO) })).filter((x) => x.st.state !== 'any');
   const whoOff = notAny.length ? `<p class="muted">${notAny.map((x) => `${esc(x.b.name)}: ${esc(statusLabel(x.st))}`).join(' · ')}</p>` : '';
-  const todayBox = `<h2>Today</h2>${whoOff}${todays.length ? `<div class="soon">${todays.map(eventChip).join('')}</div>` : '<p class="empty">Nothing booked today.</p>'}<p><a href="/calendar">Open the calendar</a></p>`;
+  let myWeek = '';
+  if (user.isManager) {
+    const mine = (await eventsBetween(todayISO, addDays(todayISO, 6), user.id)).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    const clockedOn = (await query(
+      `SELECT t.job_id, j.title FROM job_time_entries t JOIN jobs j ON j.id = t.job_id WHERE t.user_id = $1 AND t.ended_at IS NULL LIMIT 1`, [user.id])).rows[0];
+    myWeek = `${clockedOn ? `<div class="notice">You’re clocked on to <a href="/jobs/${clockedOn.job_id}#time">${esc(clockedOn.title)}</a>.</div>` : ''}
+      <h2>My jobs this week</h2>${mine.length ? `<div class="soon">${mine.map((e) => `<div><span class="muted">${e.start === todayISO ? 'Today' : day(e.start)}</span>${eventChip(e)}</div>`).join('')}</div>` : '<p class="empty">Nothing booked for you in the next 7 days.</p>'}`;
+  }
+  const todayBox = `${myWeek}<h2>Today</h2>${whoOff}${todays.length ? `<div class="soon">${todays.map(eventChip).join('')}</div>` : '<p class="empty">Nothing booked today.</p>'}<p><a href="/calendar">Open the calendar</a></p>`;
   const todo = `<h2>Needs your attention</h2>${todoItems.length ? `<ul class="todo">${todoItems.join('')}</ul>` : '<p class="empty">Nothing waiting on you right now.</p>'}`;
 
   const body = `

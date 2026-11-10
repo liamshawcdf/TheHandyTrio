@@ -111,7 +111,7 @@ async function nextStepPanel(job, user) {
   }
 
   if (user.role === 'admin' && ['deposit_paid', 'parts_ordered', 'scheduled'].includes(job.status)) {
-    const builders = (await query("SELECT id, name FROM users WHERE role = 'builder' AND active ORDER BY name")).rows;
+    const builders = (await query("SELECT id, name FROM users WHERE role IN ('builder', 'manager') AND active ORDER BY name")).rows;
     const iso = (d) => (d ? new Date(d).toLocaleDateString('en-CA') : '');
     parts.push(`<h3>${job.status === 'scheduled' ? 'Change the booking' : 'Book the job in'}</h3>
       <form method="post" action="/jobs/${job.id}/schedule" class="schedule">
@@ -380,7 +380,7 @@ router.post('/jobs/:id/schedule', admin, wrap(async (req, res) => {
   const end = String(req.body.end || '');
   if (!isDate(start)) return errorBack(res, job, 'Choose a start date.');
   if (end && (!isDate(end) || end < start)) return errorBack(res, job, 'The finish date must be on or after the start.');
-  const b = builderId && (await query("SELECT id, name FROM users WHERE id = $1 AND role = 'builder' AND active", [builderId])).rows[0];
+  const b = builderId && (await query("SELECT id, name FROM users WHERE id = $1 AND role IN ('builder', 'manager') AND active", [builderId])).rows[0];
   if (!b) return errorBack(res, job, 'Choose a builder.');
   const av = await loadAvailability([b.id], start, end || start);
   const blocked = blockedDates(av, b.id, start, end || start);

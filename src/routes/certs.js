@@ -60,7 +60,7 @@ async function teamPanel(job, user) {
   const team = (await query('SELECT u.id, u.name FROM job_team t JOIN users u ON u.id = t.user_id WHERE t.job_id = $1 ORDER BY u.name', [job.id])).rows;
   const engineers = (await query(
     `SELECT DISTINCT u.id, u.name, string_agg(DISTINCT q.kind, ', ') AS kinds FROM users u JOIN staff_qualifications q ON q.user_id = u.id
-     WHERE u.active AND u.role IN ('builder','admin') AND q.expires >= current_date GROUP BY u.id, u.name ORDER BY u.name`)).rows
+     WHERE u.active AND u.role IN ('builder', 'admin', 'manager') AND q.expires >= current_date GROUP BY u.id, u.name ORDER BY u.name`)).rows
     .filter((e) => !team.some((t) => t.id === e.id) && e.id !== job.assigned_builder_id);
   return `<section class="panel staffonly"><h2>Engineers on this job <span class="tag">Office only</span></h2>
     ${team.length ? `<ul class="certlist">${team.map((t) => `<li>${esc(t.name)}

@@ -59,6 +59,12 @@ app.use(wrap(async (req, res, next) => {
     const { rows } = await query('SELECT id, role, name, email FROM users WHERE id = $1 AND active', [req.session.userId]);
     req.user = rows[0] || null;
     if (!req.user) delete req.session.userId;
+    // A manager has every admin permission and also works jobs like a builder.
+    if (req.user) {
+      req.user.realRole = req.user.role;
+      req.user.isManager = req.user.role === 'manager';
+      if (req.user.isManager) req.user.role = 'admin';
+    }
   }
   next();
 }));

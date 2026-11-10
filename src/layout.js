@@ -3,13 +3,13 @@ const { brand } = require('./brand');
 const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const ROLE_LABELS = { customer: 'Customer', builder: 'Builder', admin: 'Admin' };
+const ROLE_LABELS = { customer: 'Customer', builder: 'Builder', admin: 'Admin', manager: 'Manager' };
 
 function nav(user) {
   if (!user) return '<a href="/login">Log in</a><a href="/register">Create account</a>';
   const links = ['<a href="/dashboard">Dashboard</a>'];
   if (user.role !== 'customer') links.push(`<a href="/jobs">${user.role === 'admin' ? 'All jobs' : 'My jobs'}</a>`, `<a href="/calendar">${user.role === 'admin' ? 'Calendar' : 'My diary'}</a>`);
-  if (user.role === 'builder') links.push('<a href="/availability">My availability</a>', '<a href="/certify">Certify</a>');
+  if (user.role === 'builder' || user.isManager) links.push('<a href="/availability">My availability</a>', '<a href="/certify">Certify</a>');
   if (user.role === 'admin') {
     links.push('<a href="/admin/reports">Reports</a>', '<a href="/admin/certificates">Certificates</a>', '<a href="/admin/templates">Pricing</a>', '<a href="/admin/users">People</a>', '<a href="/admin/emails">Messages</a>', '<a href="/admin/backups">Backups</a>', '<a href="/admin/settings">Settings</a>');
   }
@@ -40,7 +40,7 @@ function page({ title, user, body, notice, error }) {
 </header>
 <div class="stripe" aria-hidden="true"></div>
 <main>
-  ${user ? `<p class="who">Signed in as ${esc(user.name)} (${esc(ROLE_LABELS[user.role] || user.role)})</p>` : ''}
+  ${user ? `<p class="who">Signed in as ${esc(user.name)} (${esc(ROLE_LABELS[user.realRole || user.role] || user.role)})</p>` : ''}
   <h1>${esc(title)}</h1>
   ${notice ? `<div class="notice" role="status">${esc(notice)}</div>` : ''}
   ${error ? `<div class="error" role="alert">${esc(error)}</div>` : ''}

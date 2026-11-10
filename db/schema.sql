@@ -498,3 +498,7 @@ ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo_mime text;
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo_updated_at timestamptz;
 ALTER TABLE settings ALTER COLUMN business_name SET DEFAULT 'SWAT Maintenance';
 UPDATE settings SET business_name = 'SWAT Maintenance' WHERE business_name = 'TheHandyTrio';
+
+-- Manager: an admin who also works as a builder
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('customer', 'builder', 'admin', 'manager'));

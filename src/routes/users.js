@@ -13,12 +13,12 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const clean = (v, max = 200) => String(v ?? '').trim().slice(0, max);
 
 function personFields(v = {}, { isSelf = false, isNew = false } = {}) {
-  const roleOpt = (r) => `<option value="${r}" ${v.role === r ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`;
+  const roleOpt = (r) => `<option value="${r}" ${v.role === r ? 'selected' : ''}>${ROLE_LABELS[r]}${r === 'manager' ? ' (admin and builder)' : ''}</option>`;
   return `
     <label>Full name<input name="name" value="${esc(v.name)}" required maxlength="120"></label>
     <label>Email<input type="email" name="email" value="${esc(v.email)}" required></label>
     <label>Phone<input type="tel" name="phone" value="${esc(v.phone)}"></label>
-    ${isSelf ? `<input type="hidden" name="role" value="${esc(v.role)}">` : `<label>Role<select name="role">${['builder', 'admin', 'customer'].map(roleOpt).join('')}</select></label>`}
+    ${isSelf ? `<label>Role<select name="role">${['admin', 'manager'].map(roleOpt).join('')}</select></label>` : `<label>Role<select name="role">${['builder', 'manager', 'admin', 'customer'].map(roleOpt).join('')}</select></label>`}
     <label>Address<input name="address_line" value="${esc(v.address_line)}"></label>
     <div class="row">
       <label>Town<input name="town" value="${esc(v.town)}"></label>
@@ -49,7 +49,7 @@ async function checkPerson(v, { isNew }) {
   if (!EMAIL.test(v.email)) return 'Enter a valid email address.';
   if (!ROLE_LABELS[v.role]) return 'Choose a role.';
   if ((isNew || v.password) && v.password.length < 8) return 'Passwords must be at least 8 characters.';
-  if (v.role === 'builder' && v.postcode && !(await locate(v.postcode))) {
+  if (['builder', 'manager'].includes(v.role) && v.postcode && !(await locate(v.postcode))) {
     return `The postcode ${v.postcode} couldn’t be found. Check it, or leave it blank for now.`;
   }
   return null;
@@ -70,7 +70,7 @@ async function renderList(req, res, { notice, error, v = {} } = {}) {
   const list = rows.map((u) => `<tr class="${u.active ? '' : 'off'}">
     <td><a href="/admin/users/${u.id}">${esc(u.name)}</a></td><td>${esc(u.email)}</td><td>${esc(u.phone)}</td>
     <td>${esc(ROLE_LABELS[u.role])}</td>
-    <td>${u.role === 'builder' && !u.postcode ? '<span class="tag urgent">Needs postcode</span>' : esc(u.postcode)}</td>
+    <td>${['builder', 'manager'].includes(u.role) && !u.postcode ? '<span class="tag urgent">Needs postcode</span>' : esc(u.postcode)}</td>
     <td>${qualTags(u.quals)}</td>
     <td>${u.role === 'customer' ? '' : `<form method="post" action="/admin/users/${u.id}/rate" class="rateform"><span>£</span><input name="cost_rate" type="number" step="0.01" min="0" value="${u.cost_rate === null ? '' : Number(u.cost_rate)}" aria-label="Pay rate per hour for ${esc(u.name)}"><span>/hr</span><button class="small">Save</button></form>`}</td>
     <td>${u.active ? 'Active' : 'Switched off'}</td>
@@ -161,7 +161,8 @@ router.post('/admin/users/:id', admin, wrap(async (req, res) => {
   const existing = Number.isInteger(id) && (await query('SELECT id, role FROM users WHERE id = $1', [id])).rows[0];
   if (!existing) return res.redirect('/admin/users');
   const v = readPerson(req.body);
-  if (id === req.user.id) v.role = existing.role; // you can't change your own role
+  // You can switch yourself between Admin and Manager, but never lock yourself out of the office side.
+  if (id === req.user.id && !['admin', 'manager'].includes(v.role)) v.role = existing.role;
   const error = await checkPerson(v, { isNew: false });
   if (error) return res.redirect(`/admin/users/${id}?error=${encodeURIComponent(error)}`);
   try {
