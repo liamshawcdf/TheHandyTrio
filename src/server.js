@@ -5,7 +5,7 @@ const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
 const { pool, query } = require('./db');
-const { page } = require('./layout');
+const { page, requestContext } = require('./layout');
 const { wrap } = require('./auth');
 
 if (!process.env.SESSION_SECRET || !process.env.DATABASE_URL) {
@@ -18,6 +18,8 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 app.use(helmet());
+// Lets the menu know which page is showing.
+app.use((req, res, next) => requestContext.run({ path: req.path }, next));
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

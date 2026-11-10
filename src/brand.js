@@ -19,8 +19,8 @@ async function loadBrand() {
   const s = (await query(
     `SELECT business_name, brand_primary, brand_accent, logo IS NOT NULL AS has_logo,
        coalesce(extract(epoch FROM logo_updated_at)::bigint, 0) AS logo_version FROM settings WHERE id = 1`)).rows[0] || {};
-  const primary = HEX.test(s.brand_primary || '') ? s.brand_primary : '#24414f';
-  const accent = HEX.test(s.brand_accent || '') ? s.brand_accent : '#f2c300';
+  const primary = HEX.test(s.brand_primary || '') ? s.brand_primary : '#2e6fb7';
+  const accent = HEX.test(s.brand_accent || '') ? s.brand_accent : '#dbe8f5';
   cache = {
     name: s.business_name || 'SWAT Maintenance',
     primary, accent,
@@ -32,6 +32,6 @@ async function loadBrand() {
   return cache;
 }
 
-const brand = () => cache || { name: 'SWAT Maintenance', primary: '#24414f', accent: '#f2c300', primaryInk: '#ffffff', accentInk: '#1d2529', hasLogo: false, logoVersion: 0 };
+const brand = () => cache || { name: 'SWAT Maintenance', primary: '#2e6fb7', accent: '#dbe8f5', primaryInk: '#ffffff', accentInk: '#1d2529', hasLogo: false, logoVersion: 0 };
 
 module.exports = { loadBrand, brand, HEX };

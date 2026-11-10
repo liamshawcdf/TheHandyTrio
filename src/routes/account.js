@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { query, pool } = require('../db');
-const { page, esc } = require('../layout');
+const { page, esc, navItems, icon } = require('../layout');
 const { wrap, requireLogin } = require('../auth');
 const { sendEmail, notifyOffice } = require('../notify');
 const { baseUrlOf } = require('../jobs-shared');
@@ -291,6 +291,20 @@ router.post('/account/delete-request', requireLogin, wrap(async (req, res) => {
     `${req.user.name} (${req.user.email}) has asked for their account to be deleted.${note ? `\n\nTheir note: ${note}` : ''}\n\nYou must reply within one month. Keep invoices (6 years) and certificates; remove the rest.\n${baseUrlOf(req)}/admin/users`);
   res.redirect('/account?asked=1');
 }));
+
+// ---------- Menu (phones): every page the person can open ----------
+router.get('/menu', requireLogin, (req, res) => {
+  let last = '';
+  const links = navItems(req.user).map(([section, href, label, ic]) => {
+    const head = section && section !== last ? `<div class="navsection">${esc(section)}</div>` : '';
+    last = section || last;
+    return `${head}<a href="${href}">${icon(ic)}<span>${esc(label)}</span></a>`;
+  }).join('');
+  res.send(page({ title: 'Menu', user: req.user, body: `<nav class="menulist">${links}
+    <div class="navsection">Account</div>
+    <a href="/privacy">${icon('shield')}<span>Privacy notice</span></a>
+    <form method="post" action="/logout"><button>${icon('logout')}<span>Log out</span></button></form></nav>` }));
+});
 
 // ---------- Privacy notice ----------
 router.get('/privacy', wrap(async (req, res) => {

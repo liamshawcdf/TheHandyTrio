@@ -502,3 +502,9 @@ UPDATE settings SET business_name = 'SWAT Maintenance' WHERE business_name = 'Th
 -- Manager: an admin who also works as a builder
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('customer', 'builder', 'admin', 'manager'));
+
+-- New look: light greys and white with a light blue brand colour
+ALTER TABLE settings ALTER COLUMN brand_primary SET DEFAULT '#2e6fb7';
+ALTER TABLE settings ALTER COLUMN brand_accent SET DEFAULT '#dbe8f5';
+UPDATE settings SET brand_primary = '#2e6fb7' WHERE brand_primary = '#24414f';
+UPDATE settings SET brand_accent = '#dbe8f5' WHERE brand_accent = '#f2c300';

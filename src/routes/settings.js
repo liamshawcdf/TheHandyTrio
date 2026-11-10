@@ -14,8 +14,8 @@ const router = express.Router();
 const GROUPS = [
   ['Business', [
     ['business_name', 'Business name (shown everywhere: website, emails, quotes, invoices, certificates)', 'text'],
-    ['brand_primary', 'Main brand colour (header, PDF headers)', 'color'],
-    ['brand_accent', 'Highlight colour (buttons, stripes)', 'color'],
+    ['brand_primary', 'Brand colour (buttons, links, highlights, PDF headers)', 'color'],
+    ['brand_accent', 'Soft colour (the thin stripe under PDF headers)', 'color'],
     ['currency', 'Currency symbol', 'text'],
     ['base_postcode', 'Base postcode (used for travel only when no builder has a home postcode)', 'text'],
     ['service_radius_miles', 'Service area (miles)', 'number', '1'],
@@ -113,7 +113,7 @@ router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   for (const [key, lbl, type] of FIELDS) {
     const raw = req.body[key];
     if (type === 'bool') values.push(raw === 'on');
-    else if (type === 'color') values.push(HEX.test(String(raw || '')) ? String(raw).toLowerCase() : (key === 'brand_accent' ? '#f2c300' : '#24414f'));
+    else if (type === 'color') values.push(HEX.test(String(raw || '')) ? String(raw).toLowerCase() : (key === 'brand_accent' ? '#dbe8f5' : '#2e6fb7'));
     else if (type === 'text' || type === 'textarea') values.push(String(raw || '').replace(/\r\n/g, '\n').trim().slice(0, 10000));
     else {
       const n = Number(raw);
