@@ -89,9 +89,9 @@ async function notifyStageChange(jobId, status, baseUrl) {
 // Lets the office know something needs doing. Goes to the business email in Settings.
 async function notifyOffice(subject, body, jobId = null) {
   try {
-    const s = (await query('SELECT business_email FROM settings WHERE id = 1')).rows[0];
+    const s = (await query('SELECT business_email, business_name FROM settings WHERE id = 1')).rows[0];
     if (!s.business_email) return;
-    await sendEmail({ to: s.business_email, subject: `[TheHandyTrio] ${subject}`, body, jobId });
+    await sendEmail({ to: s.business_email, subject: `[${s.business_name}] ${subject}`, body, jobId });
   } catch (e) {
     console.error('Office email failed:', e);
   }

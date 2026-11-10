@@ -489,3 +489,12 @@ ALTER TABLE certificates ADD COLUMN IF NOT EXISTS trading_name text;
 ALTER TABLE certificates ADD COLUMN IF NOT EXISTS trading_contact text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS private_trading_name text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS private_trading_contact text;
+
+-- Branding: name, colours and logo all come from Settings
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS brand_primary text NOT NULL DEFAULT '#24414f';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS brand_accent text NOT NULL DEFAULT '#f2c300';
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo bytea;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo_mime text;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS logo_updated_at timestamptz;
+ALTER TABLE settings ALTER COLUMN business_name SET DEFAULT 'SWAT Maintenance';
+UPDATE settings SET business_name = 'SWAT Maintenance' WHERE business_name = 'TheHandyTrio';

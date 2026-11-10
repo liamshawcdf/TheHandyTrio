@@ -1,3 +1,5 @@
+const { brand } = require('./brand');
+
 const esc = (v) =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -17,20 +19,23 @@ function nav(user) {
 }
 
 function page({ title, user, body, notice, error }) {
+  const b = brand();
+  const logo = b.hasLogo ? `/brand/logo?v=${b.logoVersion}` : '';
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} | TheHandyTrio</title>
+<title>${esc(title)} | ${esc(b.name)}</title>${logo ? `\n<link rel="icon" href="${logo}">` : ''}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
+<style>:root { --slate: ${b.primary}; --slate-ink: ${b.primaryInk}; --hivis: ${b.accent}; --hivis-ink: ${b.accentInk}; }</style>
 <script src="/js/photos.js" defer></script>
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">TheHandyTrio</a>
+  <a class="brand" href="/">${logo ? `<img src="${logo}" alt="">` : ''}<span>${esc(b.name)}</span></a>
   <nav>${nav(user)}</nav>
 </header>
 <div class="stripe" aria-hidden="true"></div>

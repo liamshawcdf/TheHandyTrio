@@ -3,13 +3,19 @@ const { query } = require('../db');
 const { page, esc } = require('../layout');
 const { wrap, requireRole } = require('../auth');
 const privacyDefault = require('../privacy-default');
+const multer = require('multer');
+const { loadBrand, HEX } = require('../brand');
+
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } });
 
 const router = express.Router();
 
 // One list drives both the form and the save, so adding a setting is one line here plus a column in schema.sql.
 const GROUPS = [
   ['Business', [
-    ['business_name', 'Business name', 'text'],
+    ['business_name', 'Business name (shown everywhere: website, emails, quotes, invoices, certificates)', 'text'],
+    ['brand_primary', 'Main brand colour (header, PDF headers)', 'color'],
+    ['brand_accent', 'Highlight colour (buttons, stripes)', 'color'],
     ['currency', 'Currency symbol', 'text'],
     ['base_postcode', 'Base postcode (used for travel only when no builder has a home postcode)', 'text'],
     ['service_radius_miles', 'Service area (miles)', 'number', '1'],
@@ -76,6 +82,8 @@ function form(s) {
   const groups = GROUPS.map(([name, fields]) => `<fieldset class="panel"><legend>${esc(name)}</legend>
     ${fields.map(([key, lbl, type, step]) => type === 'bool'
       ? `<label class="check"><input type="checkbox" name="${key}" ${s[key] ? 'checked' : ''}> ${esc(lbl)}</label>`
+      : type === 'color'
+      ? `<label class="colour">${esc(lbl)}<span><input type="color" name="${key}" value="${esc(s[key])}"> <code>${esc(s[key])}</code></span></label>`
       : type === 'textarea'
       ? `<label>${esc(lbl)}<textarea name="${key}" rows="${key === 'privacy_notice' ? 16 : 3}" maxlength="10000">${esc(s[key])}</textarea></label>`
       : `<label>${esc(lbl)}<input name="${key}" value="${esc(s[key])}" ${type === 'text' ? '' : `type="number" min="0" step="${step}" required`}></label>`
@@ -87,7 +95,17 @@ function form(s) {
 router.get('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   const s = (await query('SELECT * FROM settings WHERE id = 1')).rows[0];
   if (!s.privacy_notice) s.privacy_notice = privacyDefault(s);
-  res.send(page({ title: 'Rates & settings', user: req.user, notice: req.query.saved ? 'Settings saved.' : null, body: form(s) }));
+  const logoPanel = `<section class="panel branding" id="branding">
+    <h2>Logo</h2>
+    ${s.logo ? `<p><img class="logoprev" src="/brand/logo?v=${s.logo_updated_at ? new Date(s.logo_updated_at).getTime() : 0}" alt="Current logo"></p>` : '<p class="muted">No logo yet, so the business name is shown on its own.</p>'}
+    <form method="post" action="/admin/settings/logo" enctype="multipart/form-data" class="inline-form">
+      <input type="file" name="logo" accept="image/png,image/jpeg" required>
+      <button class="small">${s.logo ? 'Replace logo' : 'Upload logo'}</button>
+    </form>
+    ${s.logo ? '<form method="post" action="/admin/settings/logo/remove" class="inline"><button class="small danger">Remove logo</button></form>' : ''}
+    <p class="hint">PNG or JPEG, under 2 MB. A wide logo on a transparent background works best. It appears in the website header, as the browser icon, and on quotes, invoices and certificates.</p>
+  </section>`;
+  res.send(page({ title: 'Rates & settings', user: req.user, notice: req.query.saved ? 'Settings saved.' : null, error: req.query.error ? String(req.query.error).slice(0, 200) : null, body: logoPanel + form(s) }));
 }));
 
 router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
@@ -95,6 +113,7 @@ router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   for (const [key, lbl, type] of FIELDS) {
     const raw = req.body[key];
     if (type === 'bool') values.push(raw === 'on');
+    else if (type === 'color') values.push(HEX.test(String(raw || '')) ? String(raw).toLowerCase() : (key === 'brand_accent' ? '#f2c300' : '#24414f'));
     else if (type === 'text' || type === 'textarea') values.push(String(raw || '').replace(/\r\n/g, '\n').trim().slice(0, 10000));
     else {
       const n = Number(raw);
@@ -109,7 +128,40 @@ router.post('/admin/settings', requireRole('admin'), wrap(async (req, res) => {
   values[pc] = values[pc].toUpperCase();
   const sets = FIELDS.map(([key], i) => `${key} = $${i + 1}`).join(', ');
   await query(`UPDATE settings SET ${sets}, updated_at = now() WHERE id = 1`, values);
+  await loadBrand();
   res.redirect('/admin/settings?saved=1');
+}));
+
+// ---------- Logo ----------
+router.get('/brand/logo', wrap(async (req, res) => {
+  const r = (await query('SELECT logo, logo_mime FROM settings WHERE id = 1')).rows[0];
+  if (!r || !r.logo) return res.sendStatus(404);
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type(r.logo_mime);
+  res.send(r.logo);
+}));
+
+router.post('/admin/settings/logo', requireRole('admin'), (req, res, next) => {
+  logoUpload.single('logo')(req, res, async (err) => {
+    try {
+      if (err) return res.redirect('/admin/settings?error=' + encodeURIComponent(err.code === 'LIMIT_FILE_SIZE' ? 'The logo must be under 2 MB.' : 'The logo couldn’t be uploaded.') + '#branding');
+      const f = req.file;
+      if (!f || !['image/png', 'image/jpeg'].includes(f.mimetype)) {
+        return res.redirect('/admin/settings?error=' + encodeURIComponent('Upload the logo as a PNG or JPEG image.') + '#branding');
+      }
+      await query('UPDATE settings SET logo = $1, logo_mime = $2, logo_updated_at = now() WHERE id = 1', [f.buffer, f.mimetype]);
+      await loadBrand();
+      res.redirect('/admin/settings?saved=1#branding');
+    } catch (e) {
+      next(e);
+    }
+  });
+});
+
+router.post('/admin/settings/logo/remove', requireRole('admin'), wrap(async (req, res) => {
+  await query('UPDATE settings SET logo = NULL, logo_mime = NULL, logo_updated_at = now() WHERE id = 1');
+  await loadBrand();
+  res.redirect('/admin/settings?saved=1#branding');
 }));
 
 module.exports = router;

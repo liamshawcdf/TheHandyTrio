@@ -40,6 +40,14 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: 'auto', maxAge: 1000 * 60 * 60 * 24 * 7 },
 }));
 
+// Branding (name, colours, logo) is loaded once, then refreshed whenever Settings are saved.
+const { loadBrand } = require('./brand');
+let brandLoaded = null;
+app.use((req, res, next) => {
+  if (!brandLoaded) brandLoaded = loadBrand().catch((e) => { brandLoaded = null; throw e; });
+  brandLoaded.then(() => next(), next);
+});
+
 // Remember the site's address so background reminders can link back to it.
 const { rememberBaseUrl, startScheduler } = require('./scheduler');
 app.use((req, res, next) => { rememberBaseUrl(`${req.protocol}://${req.get('host')}`); next(); });
@@ -86,6 +94,6 @@ app.use((err, req, res, next) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`TheHandyTrio running on port ${port}`);
+  console.log(`App running on port ${port}`);
   startScheduler();
 });

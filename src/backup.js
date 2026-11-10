@@ -33,7 +33,7 @@ async function makeBackup(client, { includePhotos, setupOnly = false }) {
 
 async function restoreBackup(client, gz) {
   const data = JSON.parse(zlib.gunzipSync(gz).toString('utf8'));
-  if (data.app !== 'TheHandyTrio') throw new Error('This isn’t a TheHandyTrio backup file.');
+  if (data.app !== 'TheHandyTrio') throw new Error('This isn’t a backup file from this app.');
   const present = TABLES.filter((t) => data.tables[t]);
   await client.query('BEGIN');
   try {

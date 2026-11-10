@@ -1,5 +1,12 @@
 // Builds a certificate PDF in memory, so it can be downloaded or attached to an email.
 const PDFDocument = require('pdfkit');
+
+// Dark text on light header colours, white on dark ones.
+function inkFor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2] > 0.4 ? '#1d2529' : '#ffffff';
+}
 const { TYPES } = require('./certtypes');
 
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -23,11 +30,18 @@ function buildCertificatePdf({ cert, number, job, customer, s }) {
     const ensure = (h) => { if (doc.y + h > doc.page.height - 60) { doc.addPage(); doc.y = 50; } };
 
     // Header
-    doc.rect(0, 0, W, 78).fill('#24414f');
-    doc.rect(0, 78, W, 5).fill('#f2c300');
-    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18).text(s.business_name, L, 22, { width: 280 });
+    const primary = /^#[0-9a-f]{6}$/i.test(s.brand_primary || '') ? s.brand_primary : '#24414f';
+    const accent = /^#[0-9a-f]{6}$/i.test(s.brand_accent || '') ? s.brand_accent : '#f2c300';
+    const headInk = inkFor(primary);
+    doc.rect(0, 0, W, 78).fill(primary);
+    doc.rect(0, 78, W, 5).fill(accent);
+    let nameX = L;
+    if (s.logo && ['image/png', 'image/jpeg'].includes(s.logo_mime)) {
+      try { doc.image(s.logo, L, 14, { fit: [140, 50], valign: 'center' }); nameX = L + 150; } catch (e) { nameX = L; }
+    }
+    doc.fillColor(headInk).font('Helvetica-Bold').fontSize(nameX === L ? 18 : 14).text(s.business_name, nameX, nameX === L ? 22 : 30, { width: 280 - (nameX - L) });
     const contact = [s.business_address, s.business_phone, s.business_email].filter(Boolean).join('\n');
-    if (contact) doc.font('Helvetica').fontSize(8).text(contact, R - 220, 20, { width: 220, align: 'right' });
+    if (contact) doc.font('Helvetica').fontSize(8).fillColor(headInk).text(contact, R - 200, 20, { width: 200, align: 'right' });
 
     doc.fillColor(ink).font('Helvetica-Bold').fontSize(16).text(t.name, L, 98, { width: R - L - 170 });
     const meta = [['Number', number], ['Issued', fmtDate(cert.issued_at) || 'Draft'], ['Next due', fmtDate(cert.next_due) || 'n/a'], ...(job.ref ? [['Job', job.ref]] : [])];

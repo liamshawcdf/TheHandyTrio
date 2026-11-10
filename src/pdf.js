@@ -1,6 +1,13 @@
 // Branded A4 documents (quotes and invoices) with page numbers.
 const PDFDocument = require('pdfkit');
 
+// Dark text on light header colours, white on dark ones.
+function inkFor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * lum[0] + 0.7152 * lum[1] + 0.0722 * lum[2] > 0.4 ? '#1d2529' : '#ffffff';
+}
+
 /*
   opts: { res, download, filename, s (settings), title, meta: [[label, value]], customer: {name, lines},
           heading, intro, itemised, rows: [{description, qty, unit, price, total}], money,
@@ -19,11 +26,18 @@ function renderDocument(opts) {
   const ink = '#1d2529';
   const muted = '#5d6a70';
 
-  doc.rect(0, 0, W, 86).fill('#24414f');
-  doc.rect(0, 86, W, 6).fill('#f2c300');
-  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(22).text(s.business_name, L, 28, { width: 300 });
+  const primary = /^#[0-9a-f]{6}$/i.test(s.brand_primary || '') ? s.brand_primary : '#24414f';
+  const accent = /^#[0-9a-f]{6}$/i.test(s.brand_accent || '') ? s.brand_accent : '#f2c300';
+  const headInk = inkFor(primary);
+  doc.rect(0, 0, W, 86).fill(primary);
+  doc.rect(0, 86, W, 6).fill(accent);
+  let nameX = L;
+  if (s.logo && ['image/png', 'image/jpeg'].includes(s.logo_mime)) {
+    try { doc.image(s.logo, L, 16, { fit: [150, 54], valign: 'center' }); nameX = L + 160; } catch (e) { nameX = L; }
+  }
+  doc.fillColor(headInk).font('Helvetica-Bold').fontSize(nameX === L ? 22 : 16).text(s.business_name, nameX, nameX === L ? 28 : 34, { width: 300 - (nameX - L) });
   const contact = [s.business_address, s.business_phone, s.business_email].filter(Boolean).join('\n');
-  if (contact) doc.font('Helvetica').fontSize(9).text(contact, R - 220, 26, { width: 220, align: 'right' });
+  if (contact) doc.font('Helvetica').fontSize(9).fillColor(headInk).text(contact, R - 200, 26, { width: 200, align: 'right' });
 
   doc.fillColor(ink).font('Helvetica-Bold').fontSize(20).text(opts.title, L, 115);
   let my = 115;

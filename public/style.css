@@ -315,3 +315,14 @@ ul.error { padding-left: 2rem; }
   .avrow { grid-template-columns: 1fr 1fr; }
   .avrow .avday { grid-column: 1 / -1; }
 }
+
+/* Branding */
+.top { color: var(--slate-ink, #fff); }
+.top nav a, .top .linkish { color: var(--slate-ink, #fff); }
+.brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--slate-ink, #fff); }
+.brand img { height: 40px; width: auto; max-width: 160px; object-fit: contain; }
+.logoprev { max-height: 80px; max-width: 100%; background: var(--slate); padding: .5rem; border-radius: 4px; }
+.branding { margin-bottom: 1rem; }
+.branding h2 { margin-top: 0; }
+label.colour span { display: flex; align-items: center; gap: .5rem; margin-top: .3rem; }
+label.colour input[type="color"] { width: 3rem; height: 2.2rem; padding: .1rem; margin: 0; }

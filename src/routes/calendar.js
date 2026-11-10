@@ -337,7 +337,7 @@ router.get('/calendar/feed/:token.ics', wrap(async (req, res) => {
   const base = baseUrlOf(req);
   const names = Object.fromEntries((await query("SELECT id, name FROM users WHERE role = 'builder'")).rows.map((b) => [b.id, b.name]));
   const now = icsStamp(new Date());
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${s.business_name}//TheHandyTrio//EN`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${s.business_name.replace(/[^\w ]/g, '')}//Jobs//EN`, 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     `X-WR-CALNAME:${icsEscape(`${s.business_name}${u.role === 'admin' ? '' : `: ${u.name}`}`)}`, 'X-PUBLISHED-TTL:PT1H', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];
   for (const e of events) {
     const address = [e.address_line, e.town, e.postcode].filter(Boolean).join(', ');

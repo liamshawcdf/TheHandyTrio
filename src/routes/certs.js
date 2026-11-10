@@ -231,7 +231,7 @@ async function emailCertificate(req, job, c) {
   }
   // Office copy.
   if (s.business_email) {
-    await sendEmail({ to: s.business_email, subject: `[TheHandyTrio] Office copy: ${t.name} ${certNo(c)} (${ref(job.id)})`,
+    await sendEmail({ to: s.business_email, subject: `[${s.business_name}] Office copy: ${t.name} ${certNo(c)} (${ref(job.id)})`,
       body: `${t.name} ${certNo(c)} issued by ${c.engineer_name}. Outcome: ${c.outcome}.\n\n${baseUrlOf(req)}/jobs/${job.id}/certs/${c.id}`, jobId: job.id, attachments });
   }
   await query('UPDATE certificates SET sent_to = $1, sent_at = now() WHERE id = $2', [cust.email, c.id]);
